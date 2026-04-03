@@ -46,7 +46,13 @@ const SETUP_Q = [
   { key:"done", msg:"「設定完了だ。さっさと使え。」\n(설정 완료다. 빨리 써.)\n\n뭐든 물어봐. 과업 등록, 검색, 질문 다 됨.", options:[] },
 ];
 
-const EXPR = { idle:"😤", think:"🤔", angry:"💢", smirk:"😏", laugh:"😁" };
+const EXPR = {
+  idle:  { e: <img src="/idle.png"  style={{width:"100%",height:"100%",objectFit:"cover"}}/>, t:"idle"  },
+  think: { e: <img src="/idle.png"  style={{width:"100%",height:"100%",objectFit:"cover"}}/>, t:"think" },
+  angry: { e: <img src="/angry.png" style={{width:"100%",height:"100%",objectFit:"cover"}}/>, t:"angry" },
+  smirk: { e: <img src="/smirk.png" style={{width:"100%",height:"100%",objectFit:"cover"}}/>, t:"smirk" },
+  laugh: { e: <img src="/laugh.png" style={{width:"100%",height:"100%",objectFit:"cover"}}/>, t:"laugh" },
+};
 
 export default function Home() {
   const [phase, setPhase]   = useState("setup");
@@ -186,7 +192,7 @@ export default function Home() {
           <Tb title="💥 BAKUGO_ASSISTANT.exe"/>
           <div style={{padding:"10px 12px",display:"flex",gap:12,alignItems:"flex-end",background:C.win}}>
             <div style={{width:76,height:84,flexShrink:0,border:`2px solid ${C.border}`,background:C.lavLt,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,transition:"transform 0.2s",transform:expr==="angry"?"scale(1.06)":"scale(1)"}}>
-              <div style={{fontSize:40}}>{EXPR[expr]}</div>
+              <img src={`/${expr}.png`} style={{width:"100%", height:"100%", objectFit:"cover", borderRadius:4}} />
               <div style={{fontSize:10,color:C.textDim,fontWeight:700}}>{expr.toUpperCase()}</div>
               {loading&&<div style={{fontSize:10,color:C.hotpink}}>...</div>}
             </div>
