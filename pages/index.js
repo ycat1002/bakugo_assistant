@@ -357,11 +357,11 @@ export default function Home() {
 
           {/* 채팅 입력 */}
           {phase==="chat" && tab==="chat" && (
-            <div style={{borderTop:`2px solid ${C.border}`,padding:10,display:"flex",gap:8,background:C.winDim}}>
-              <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={onKey} placeholder="질문 / 과업 추가 / 완료 처리..." disabled={loading} style={{flex:1,background:C.win,border:`2px solid ${C.border}`,padding:"10px 12px",color:C.text,fontSize:14,fontFamily:C.ss,outline:"none"}}/>
-              <button onClick={send} disabled={loading} style={{padding:"10px 16px",border:`2px solid ${C.borderDk}`,background:loading?C.pinkLt:C.yellow,fontSize:14,fontWeight:700,color:C.text,cursor:loading?"not-allowed":"pointer",boxShadow:`2px 2px 0 ${C.yellowDk}`,fontFamily:C.ss}}>GO</button>
-            </div>
-          )}
+  <div style={{borderTop:`2px solid ${C.border}`,padding:10,display:"flex",gap:8,background:C.winDim,overflow:"hidden"}}>
+    <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={onKey} placeholder="질문 / 과업 추가 / 완료 처리..." disabled={loading} style={{flex:1,background:C.win,border:`2px solid ${C.border}`,padding:"10px 12px",color:C.text,fontSize:14,fontFamily:C.ss,outline:"none",minWidth:0}}/>
+    <button onClick={send} disabled={loading} style={{padding:"10px 16px",border:`2px solid ${C.borderDk}`,background:loading?C.pinkLt:C.yellow,fontSize:14,fontWeight:700,color:C.text,cursor:loading?"not-allowed":"pointer",boxShadow:`2px 2px 0 ${C.yellowDk}`,fontFamily:C.ss,flexShrink:0}}>GO</button>
+  </div>
+)}
 
           {/* 과업 탭 */}
           {phase==="chat" && tab==="tasks" && (
