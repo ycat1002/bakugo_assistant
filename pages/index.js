@@ -221,7 +221,9 @@ export default function Home() {
             <div style={{height:phase==="setup"?270:290,overflowY:"auto",padding:"10px",display:"flex",flexDirection:"column",gap:10,scrollbarWidth:"thin",scrollbarColor:`${C.lavender} ${C.win}`}}>
               {msgs.map((m,i)=>(
                 <div key={i} style={{display:"flex",flexDirection:m.role==="user"?"row-reverse":"row",gap:8,alignItems:"flex-start"}}>
-                  {m.role==="assistant"&&<div style={{width:26,height:26,flexShrink:0,border:`1.5px solid ${C.border}`,background:C.lavLt,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>😤</div>}
+                  {m.role==="assistant"&&<div style={{width:26,height:26,flexShrink:0,border:`1.5px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
+  <img src="/idle.png" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+</div>}
                   <div style={{maxWidth:"82%",background:m.role==="user"?C.hotpink:C.lavLt,border:`1.5px solid ${m.role==="user"?C.borderDk:C.border}`,padding:"9px 12px",fontSize:14,lineHeight:1.7,color:m.role==="user"?"#fff":C.text,whiteSpace:"pre-wrap",wordBreak:"break-word",fontWeight:m.role==="user"?700:400}}>
                     {m.text}
                   </div>
@@ -229,7 +231,9 @@ export default function Home() {
               ))}
               {loading&&(
                 <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  <div style={{width:26,height:26,border:`1.5px solid ${C.border}`,background:C.lavLt,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>😤</div>
+                  <div style={{width:26,height:26,border:`1.5px solid ${C.border}`,background:C.lavLt,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,overflow:"hidden"}}>
+  <img src="/idle.png" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+</div>
                   <div style={{background:C.lavLt,border:`1.5px solid ${C.border}`,padding:"8px 14px",fontSize:16,color:C.lavDk,letterSpacing:4}}>・・・</div>
                 </div>
               )}
