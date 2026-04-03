@@ -164,7 +164,7 @@ export default function Home() {
   const onKey = e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();} };
 
   const curQ = step===98?null:SETUP_Q[step];
-  const showOpts = phase==="setup"&&curQ&&curQ.key!=="done";
+  const showOpts = phase==="setup"&&(step===98||(curQ&&curQ.key!=="done"));
 
   const winS = { background:C.win, border:`2px solid ${C.border}`, boxShadow:`3px 3px 0 ${C.borderDk}`, width:"100%", maxWidth:360 };
 
@@ -191,7 +191,7 @@ export default function Home() {
         <div style={winS}>
           <Tb title="💥 BAKUGO_ASSISTANT.exe"/>
           <div style={{padding:"10px 12px",display:"flex",gap:12,alignItems:"flex-end",background:C.win}}>
-            <div style={{width:76,height:84,flexShrink:0,border:`2px solid ${C.border}`,background:C.lavLt,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,transition:"transform 0.2s",transform:expr==="angry"?"scale(1.06)":"scale(1)"}}>
+            <div style={{width:76,height:84,flexShrink:0,border:`2px solid ${C.border}`,background:C.lavLt,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,transition:"transform 0.2s",transform:expr==="angry"?"scale(1.06)":"scale(1)",overflow:"hidden"}}></div><div style={{width:76,height:84,flexShrink:0,border:`2px solid ${C.border}`,background:C.lavLt,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,transition:"transform 0.2s",transform:expr==="angry"?"scale(1.06)":"scale(1)"}}>
               <img src={`/${expr}.png`} style={{width:"100%", height:"100%", objectFit:"cover", borderRadius:4}} />
               <div style={{fontSize:10,color:C.textDim,fontWeight:700}}>{expr.toUpperCase()}</div>
               {loading&&<div style={{fontSize:10,color:C.hotpink}}>...</div>}
