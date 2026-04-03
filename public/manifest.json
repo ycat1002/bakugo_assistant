@@ -1,0 +1,13 @@
+{
+  "name": "BAKUGO_ASSISTANT",
+  "short_name": "바쿠고",
+  "description": "바쿠고 카츠키 노션 비서",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5b8d0",
+  "theme_color": "#c8a0e8",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
