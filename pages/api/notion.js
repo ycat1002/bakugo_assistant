@@ -17,11 +17,19 @@ export default async function handler(req, res) {
 
   const today = new Date().toISOString().split("T")[0];
 
-  // 분야는 바쿠고가 실제 노션 옵션명 그대로 사용 (get_categories로 조회)
+  // 텍스트 → Notion 블록 변환 (줄바꿈 처리)
+  const textToBlocks = (text) => {
+    if (!text) return [];
+    return text.split("\n").filter(l => l.trim()).map(line => ({
+      object: "block",
+      type: "paragraph",
+      paragraph: { rich_text: [{ type: "text", text: { content: line } }] },
+    }));
+  };
 
   try {
 
-    // ── 과업 전체 조회 ──
+    // ── 1. 과업 전체 조회 ──
     if (action === "get_tasks") {
       const r = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
         method: "POST", headers,
@@ -33,7 +41,15 @@ export default async function handler(req, res) {
       return res.status(200).json(await r.json());
     }
 
-    // ── 과업 등록 ──
+    // ── 2. 분야 옵션 조회 ──
+    if (action === "get_categories") {
+      const r = await fetch(`https://api.notion.com/v1/databases/${dbId}`, { headers });
+      const data = await r.json();
+      const options = data?.properties?.분야?.select?.options?.map(o => o.name) || [];
+      return res.status(200).json({ options });
+    }
+
+    // ── 3. 과업 등록 ──
     if (action === "add_task") {
       const r = await fetch("https://api.notion.com/v1/pages", {
         method: "POST", headers,
@@ -50,19 +66,106 @@ export default async function handler(req, res) {
       return res.status(200).json(await r.json());
     }
 
-    // ── 완료 처리 ──
+    // ── 4. 완료 처리 ──
     if (action === "complete") {
       if (!payload?.pageId) return res.status(400).json({ error: "pageId required" });
       const r = await fetch(`https://api.notion.com/v1/pages/${payload.pageId}`, {
         method: "PATCH", headers,
+        body: JSON.stringify({ properties: { 완료: { checkbox: true } } }),
+      });
+      return res.status(200).json(await r.json());
+    }
+
+    // ── 5. 노션 검색 ──
+    if (action === "search_notion") {
+      const r = await fetch("https://api.notion.com/v1/search", {
+        method: "POST", headers,
         body: JSON.stringify({
-          properties: { 완료: { checkbox: true } },
+          query: payload.query,
+          page_size: 5,
+          filter: payload.type ? { property: "object", value: payload.type } : undefined,
+        }),
+      });
+      const data = await r.json();
+      // 결과 요약 (ID + 제목만)
+      const results = (data.results || []).map(p => ({
+        id: p.id,
+        title: p.properties?.title?.title?.[0]?.plain_text
+          || p.properties?.작업명?.title?.[0]?.plain_text
+          || p.properties?.생각?.title?.[0]?.plain_text
+          || p.title?.[0]?.plain_text
+          || "제목없음",
+        type: p.object,
+        url: p.url,
+      }));
+      return res.status(200).json({ results });
+    }
+
+    // ── 6. 페이지 내용 읽기 ──
+    if (action === "read_page") {
+      if (!payload?.pageId) return res.status(400).json({ error: "pageId required" });
+      // 블록 가져오기
+      const r = await fetch(`https://api.notion.com/v1/blocks/${payload.pageId}/children?page_size=50`, { headers });
+      const data = await r.json();
+      // 텍스트만 추출
+      const text = (data.results || []).map(block => {
+        const type = block.type;
+        const content = block[type]?.rich_text?.map(t => t.plain_text)?.join("") || "";
+        if (!content) return null;
+        const prefix = {
+          heading_1: "# ", heading_2: "## ", heading_3: "### ",
+          bulleted_list_item: "• ", numbered_list_item: "1. ",
+          to_do: block[type]?.checked ? "✅ " : "⬜ ",
+        }[type] || "";
+        return prefix + content;
+      }).filter(Boolean).join("\n");
+      return res.status(200).json({ text: text || "(내용 없음)", blockCount: data.results?.length || 0 });
+    }
+
+    // ── 7. 페이지에 내용 추가 ──
+    if (action === "append_to_page") {
+      if (!payload?.pageId || !payload?.content) return res.status(400).json({ error: "pageId and content required" });
+      const blocks = textToBlocks(payload.content);
+      if (blocks.length === 0) return res.status(400).json({ error: "content is empty" });
+      const r = await fetch(`https://api.notion.com/v1/blocks/${payload.pageId}/children`, {
+        method: "PATCH", headers,
+        body: JSON.stringify({ children: blocks }),
+      });
+      return res.status(200).json(await r.json());
+    }
+
+    // ── 8. 새 페이지 만들기 ──
+    if (action === "create_page") {
+      const parentPageId = payload?.parentPageId || process.env.NOTION_PARENT_PAGE_ID || "3366218c4184810fb925e2659629e9f0";
+      const r = await fetch("https://api.notion.com/v1/pages", {
+        method: "POST", headers,
+        body: JSON.stringify({
+          parent: { page_id: parentPageId },
+          icon: payload.icon ? { emoji: payload.icon } : undefined,
+          properties: {
+            title: [{ text: { content: payload.title || "새 페이지" } }],
+          },
+          children: textToBlocks(payload.content || ""),
+        }),
+      });
+      const data = await r.json();
+      return res.status(200).json({ url: data.url, id: data.id });
+    }
+
+    // ── 9. 페이지 속성 수정 ──
+    if (action === "update_page") {
+      if (!payload?.pageId) return res.status(400).json({ error: "pageId required" });
+      const r = await fetch(`https://api.notion.com/v1/pages/${payload.pageId}`, {
+        method: "PATCH", headers,
+        body: JSON.stringify({
+          properties: payload.properties || {},
+          ...(payload.archived !== undefined ? { archived: payload.archived } : {}),
         }),
       });
       return res.status(200).json(await r.json());
     }
 
-    // ── 사이드 생각 저장 ──
+    // ── 10. 사이드 생각 저장 ──
     if (action === "save_thought") {
       if (!thoughtDbId) return res.status(200).json({ ok: true, skipped: true });
       const r = await fetch("https://api.notion.com/v1/pages", {
@@ -81,7 +184,7 @@ export default async function handler(req, res) {
       return res.status(200).json(await r.json());
     }
 
-    // ── 리서치 결과 저장 ──
+    // ── 11. 리서치 결과 저장 ──
     if (action === "save_research") {
       if (!researchDbId) return res.status(200).json({ ok: true, skipped: true });
       const p = payload;
@@ -123,14 +226,6 @@ export default async function handler(req, res) {
       });
       const data = await r.json();
       return res.status(200).json({ url: data.url || null });
-    }
-
-    // ── 분야 옵션 조회 ──
-    if (action === "get_categories") {
-      const r = await fetch(`https://api.notion.com/v1/databases/${dbId}`, { headers });
-      const data = await r.json();
-      const options = data?.properties?.분야?.select?.options?.map(o => o.name) || [];
-      return res.status(200).json({ options });
     }
 
     return res.status(400).json({ error: "unknown action" });
