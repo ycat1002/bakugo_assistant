@@ -17,13 +17,18 @@ export default async function handler(req, res) {
 
   const today = new Date().toISOString().split("T")[0];
 
+  // 분야는 바쿠고가 실제 노션 옵션명 그대로 사용 (get_categories로 조회)
+
   try {
 
     // ── 과업 전체 조회 ──
     if (action === "get_tasks") {
       const r = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
         method: "POST", headers,
-        body: JSON.stringify({ sorts:[{ property:"날짜", direction:"ascending" }], page_size:50 }),
+        body: JSON.stringify({
+          sorts: [{ property: "날짜", direction: "ascending" }],
+          page_size: 50,
+        }),
       });
       return res.status(200).json(await r.json());
     }
@@ -50,7 +55,9 @@ export default async function handler(req, res) {
       if (!payload?.pageId) return res.status(400).json({ error: "pageId required" });
       const r = await fetch(`https://api.notion.com/v1/pages/${payload.pageId}`, {
         method: "PATCH", headers,
-        body: JSON.stringify({ properties: { 완료: { checkbox: true } } }),
+        body: JSON.stringify({
+          properties: { 완료: { checkbox: true } },
+        }),
       });
       return res.status(200).json(await r.json());
     }
@@ -65,7 +72,7 @@ export default async function handler(req, res) {
           icon: { emoji: "💭" },
           properties: {
             생각: { title: [{ text: { content: payload.thought || "" } }] },
-            날짜: { date: { start: today } },  // ✅ 올바른 REST API 형식
+            날짜: { date: { start: today } },
             맥락: { rich_text: [{ text: { content: payload.context || "" } }] },
             상태: { select: { name: "보류" } },
           },
@@ -85,7 +92,7 @@ export default async function handler(req, res) {
           icon: { emoji: "🤖" },
           properties: {
             주제:       { title: [{ text: { content: p.taskTitle || (p.task||"").slice(0,40) || "리서치" } }] },
-            날짜:       { date: { start: today } },  // ✅ 올바른 REST API 형식
+            날짜:       { date: { start: today } },
             분야:       { select: { name: p.domain || "기타" } },
             태스크유형: { select: { name: p.type || "general" } },
             AI리더:     { select: { name: p.leader || "Claude" } },
@@ -116,6 +123,14 @@ export default async function handler(req, res) {
       });
       const data = await r.json();
       return res.status(200).json({ url: data.url || null });
+    }
+
+    // ── 분야 옵션 조회 ──
+    if (action === "get_categories") {
+      const r = await fetch(`https://api.notion.com/v1/databases/${dbId}`, { headers });
+      const data = await r.json();
+      const options = data?.properties?.분야?.select?.options?.map(o => o.name) || [];
+      return res.status(200).json({ options });
     }
 
     return res.status(400).json({ error: "unknown action" });

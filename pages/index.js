@@ -80,7 +80,8 @@ const buildSystem = (cats, pending, sideThoughts) => `
 \`\`\`
 
 [오늘 날짜]: ${new Date().toLocaleDateString('ko-KR', {year:'numeric',month:'long',day:'numeric'})}
-[현재 분야]: ${cats.join(", ")}
+[노션 분야 옵션 (정확히 이 이름만 사용)]: ${cats.join(", ")}
+- 과업 등록 시 분야가 불명확하면 위 옵션 중 선택하라고 물어봐. 추측하지 마.
 [미완료 과업]: ${pending.length > 0 ? pending.map((t,i)=>`${i+1}. [${t.category}] ${t.task}`).join(" / ") : "없음"}
 ${sideThoughts.length > 0 ? `[보류 생각]: ${sideThoughts.map(s=>s.thought).join(" / ")}` : ""}
 
@@ -102,7 +103,7 @@ const extractJsonBlocks = (text) => {
 const stripJson = (t) => t.replace(/```json[\s\S]*?```/g,"").trim();
 
 export default function Home() {
-  const [cats]            = useState(["WHIF","클라이언트","앱개발","퍼브랜","시스템"]);
+  const [cats, setCats]    = useState(["WHIF","클라이언트","앱개발","퍼브랜","시스템"]); // 노션 DB에서 실제 옵션으로 덮어씀
   const [msgs, setMsgs]   = useState([]);
   const [tasks, setTasks] = useState([]);
   const [sideThoughts, setSD]    = useState([]);
@@ -168,6 +169,13 @@ export default function Home() {
       }
     } catch {}
     setTL(false);
+    // 실제 노션 분야 옵션 가져오기
+    try {
+      const catRes = await fetch("/api/notion",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"get_categories"})});
+      const catData = await catRes.json();
+      if (catData.options?.length > 0) setCats(catData.options);
+    } catch {}
+
     setMsgs([{ role:"assistant", text:getGreeting(count) }]);
   };
 
@@ -324,8 +332,12 @@ export default function Home() {
           fetch("/api/notion",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"add_task",payload:t})}).catch(()=>{});
         } else if (json.action==="complete_task") {
           const ref=json.task; const n=parseInt(ref);
-          if(!isNaN(n)&&tasks[n-1]) setTasks(p=>p.map((t,i)=>i===n-1?{...t,done:true}:t));
-          else { const i=tasks.findIndex(t=>t.task.includes(ref)&&!t.done); if(i>=0) setTasks(p=>p.map((t,j)=>j===i?{...t,done:true}:t)); }
+          let doneTask=null;
+          if(!isNaN(n)&&tasks[n-1]){doneTask=tasks[n-1];setTasks(p=>p.map((t,i)=>i===n-1?{...t,done:true}:t));}
+          else{const i=tasks.findIndex(t=>t.task.includes(ref)&&!t.done);if(i>=0){doneTask=tasks[i];setTasks(p=>p.map((t,j)=>j===i?{...t,done:true}:t));}}
+          if(doneTask?.id){
+            fetch("/api/notion",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"complete",payload:{pageId:doneTask.id}})}).catch(()=>{});
+          }
           newExpr="smirk";
         } else if (json.action==="research") {
           if (cleanText) setMsgs([...history, {role:"assistant",text:cleanText}]);
