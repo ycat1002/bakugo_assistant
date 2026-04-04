@@ -71,9 +71,15 @@ export default async function handler(req, res) {
       if (!payload?.pageId) return res.status(400).json({ error: "pageId required" });
       const r = await fetch(`https://api.notion.com/v1/pages/${payload.pageId}`, {
         method: "PATCH", headers,
-        body: JSON.stringify({ properties: { 완료: { checkbox: true } } }),
+        body: JSON.stringify({ properties: { "\uc644\ub8cc": { checkbox: true } } }),
       });
-      return res.status(200).json(await r.json());
+      const data = await r.json();
+      // 노션 응답 로깅 (Vercel 로그에서 확인 가능)
+      console.log("[complete] pageId:", payload.pageId, "| httpStatus:", r.status, "| notionError:", data.message || "none");
+      if (r.status !== 200) {
+        return res.status(200).json({ ok: false, httpStatus: r.status, error: data.message, code: data.code });
+      }
+      return res.status(200).json({ ok: true, id: data.id });
     }
 
     // ── 5. 노션 검색 ──
