@@ -55,18 +55,15 @@ const withRetry = async (fn, maxAttempts = 3, delay = 1000) => {
   return "[응답 생성 실패]";
 };
 
-// ── Claude: Web Search + Extended Thinking (Phase 3에만) ──
-const callClaude = async (system, prompt, useThinking = false) => {
+// ── Claude: Web Search (Extended Thinking은 callClaudeThinking 사용) ──
+const callClaude = async (system, prompt) => {
   const body = {
     model: MODELS.claude,
-    max_tokens: useThinking ? 16000 : 1000,
+    max_tokens: 1000,
     system,
     tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
     messages: [{ role: "user", content: prompt }],
   };
-  if (useThinking) {
-    body.thinking = { type: "enabled", budget_tokens: 8000 };
-  }
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": CLAUDE_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
@@ -75,6 +72,24 @@ const callClaude = async (system, prompt, useThinking = false) => {
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
   // thinking 블록 제외, text 블록만 반환
+  return (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim() || "오류";
+};
+
+// ── Claude: Extended Thinking 전용 (web_search 없음 — 호환 안됨) ──
+const callClaudeThinking = async (system, prompt) => {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": CLAUDE_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODELS.claude,
+      max_tokens: 16000,
+      system,
+      thinking: { type: "enabled", budget_tokens: 8000 },
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
   return (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim() || "오류";
 };
 
@@ -180,13 +195,14 @@ export default async function handler(req, res) {
   const type   = detectType(task);
   const domain = detectDomain(task);
   const leader = getLeader(type);
-  const base   = `${YEA_PROFILE}\n\n[태스크]\n${task}\n[유형: ${type} | 분야: ${domain}]`;
+  const notionCtx = await searchNotionContext(task);
+  const base   = `${YEA_PROFILE}${notionCtx ? "\n\n" + notionCtx : ""}\n\n[태스크]\n${task}\n[유형: ${type} | 분야: ${domain}]`;
   const needsCode = /데이터|통계|수치|계산|차트/.test(task);
 
   try {
     // Phase 1: 병렬 초안
     const [draftClaude, draftGemini, draftGPT] = await Promise.all([
-      withRetry(() => callClaude(`${YEA_PROFILE}\n전략적 분석가. 웹검색해서 최신 정보 기반 초안. 500자 이내. 한국어.`, base, false)),
+      withRetry(() => callClaude(`${YEA_PROFILE}\n전략적 분석가. 웹검색해서 최신 정보 기반 초안. 500자 이내. 한국어.`, base)),
       callGemini(`${YEA_PROFILE}\n\n리서처. Google Search로 최신 팩트 기반 초안. 500자 이내. 한국어.\n\n${base}`),
       callGPT(`${YEA_PROFILE}\n창의적 분석가. 웹검색해서 최신 트렌드 반영 초안. 500자 이내. 한국어.`, base, needsCode),
     ]);
@@ -196,18 +212,17 @@ export default async function handler(req, res) {
 
     // Phase 2: 병렬 크리틱
     const [criticClaude, criticGemini, criticGPT] = await Promise.all([
-      withRetry(() => callClaude(`논리 파괴자. 세 초안의 구조적 모순·비약 지적. 300자 이내. 한국어.`, `[태스크]\n${task}\n\n${ctx}`, false)),
+      withRetry(() => callClaude(`논리 파괴자. 세 초안의 구조적 모순·비약 지적. 300자 이내. 한국어.`, `[태스크]\n${task}\n\n${ctx}`)),
       callGemini(`팩트 파괴자. 세 초안의 틀린 정보·오래된 데이터 지적. 300자 이내. 한국어.\n\n[태스크]\n${task}\n\n${ctx}`),
       callGPT(`독자 파괴자. 불명확한 표현·설득력 없는 부분 지적. 300자 이내. 한국어.`, `[태스크]\n${task}\n\n${ctx}`, false),
     ]);
 
     const critics = { claude:criticClaude, gemini:criticGemini, gpt:criticGPT };
 
-    // Phase 3: Claude Extended Thinking으로 최종 종합
-    const final = await withRetry(() => callClaude(
+    // Phase 3: Claude Extended Thinking으로 최종 종합 (웹검색 없이 — 호환 안됨)
+    const final = await withRetry(() => callClaudeThinking(
       `${YEA_PROFILE}\n편집장. 세 초안 + 세 크리틱 종합해서 최종 결론. 핵심 3~5줄. 내용에 맞게 표/도식/글 자유롭게. 한국어.`,
-      `[태스크]\n${task}\n\n[초안]\nClaude:${draftClaude}\nGemini:${draftGemini}\nGPT:${draftGPT}\n\n[크리틱]\nClaude:${criticClaude}\nGemini:${criticGemini}\nGPT:${criticGPT}`,
-      true // Extended Thinking ON
+      `[태스크]\n${task}\n\n[초안]\nClaude:${draftClaude}\nGemini:${draftGemini}\nGPT:${draftGPT}\n\n[크리틱]\nClaude:${criticClaude}\nGemini:${criticGemini}\nGPT:${criticGPT}`
     ));
 
     const notionUrl = await saveToNotion({ topic: taskTitle||task.slice(0,40), type, domain, leader, drafts, critics, final }).catch(()=>null);
@@ -221,3 +236,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: e.message });
   }
 }
+// Note: Notion RAG is handled at the top of the handler
