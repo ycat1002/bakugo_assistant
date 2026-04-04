@@ -87,10 +87,14 @@ ${sideThoughts.length > 0 ? `[보류 생각]: ${sideThoughts.map(s=>s.thought).j
 
 [액션 — JSON은 코드블록 안에만, 채팅창 노출 절대 금지]
 
+⚠️ 중요: 과업 등록/완료/노션 조작은 반드시 JSON 액션으로 실행해야 함.
+"했어" "정리했어" 같은 텍스트만 뱉으면 실제로 아무것도 안 됨. 반드시 JSON 블록 포함.
+여러 개 완료시 JSON 블록 여러 개 뱉어야 함.
+
 과업 등록:
 {"action":"add_task","task":"...","category":"실제 노션 분야 옵션명","date":"YYYY-MM-DD"}
 
-완료 처리:
+완료 처리 (여러 개면 여러 번):
 {"action":"complete_task","task":"...또는번호"}
 
 노션 검색 ("~페이지 찾아줘" "~어디 있어"):
