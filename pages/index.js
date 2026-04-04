@@ -145,6 +145,7 @@ export default function Home() {
   const [taskLoading, setTL] = useState(false);
   const [initialized, setInit] = useState(false);
   const [careShown, setCareShown] = useState(false);
+  const [completePicker, setCompletePicker] = useState(false); // 완료 과업 선택 UI
 
   // Vision
   const [pendingImage, setPendingImage] = useState(null); // {data, mediaType}
@@ -446,7 +447,45 @@ ${data.text}`}]);
     setLoad(false); inputRef.current?.focus();
   };
 
-  const send = () => { const t=input.trim(); if(!t||loading||researching||generating)return; setInput(""); sendToAI(t); };
+  const COMPLETE_REGEX = /완료|했어|끝났어|다 했어|마쳤어|처리했어|done|체크/;
+
+  const completeTask = async (task) => {
+    setTasks(p=>p.map(t=>t.id===task.id?{...t,done:true}:t));
+    setCompletePicker(false);
+    setMsgs(p=>[...p,
+      {role:"user",text:task.task},
+      {role:"assistant",text:`「よし。」
+(좋아.)
+
+✅ "${task.task}" 완료 처리했어.`}
+    ]);
+    if(task.id){
+      try {
+        await fetch("/api/notion",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({action:"complete",payload:{pageId:task.id}})
+        });
+      } catch(e){ console.error(e); }
+    }
+  };
+
+  const send = () => {
+    const t=input.trim();
+    if(!t||loading||researching||generating)return;
+    // 완료 키워드 + 미완료 과업 있으면 UI 피커 먼저
+    if(COMPLETE_REGEX.test(t) && pending.length > 0 && !t.match(/\d/)) {
+      setMsgs(p=>[...p,
+        {role:"user",text:t},
+        {role:"assistant",text:"「わかった。どれだ？」
+(알았어. 어떤 거야?)
+
+완료한 과업 선택해."}
+      ]);
+      setCompletePicker(true);
+      setInput("");
+      return;
+    }
+    setInput(""); sendToAI(t);
+  };
   const onKey = e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();} };
 
   const isBusy = loading || researching || generating;
@@ -556,6 +595,25 @@ ${data.text}`}]);
                   </div>
                 </div>
               )}
+              {/* 완료 과업 선택 UI */}
+              {completePicker&&(
+                <div style={{background:C.winDim,border:`2px solid ${C.lavender}`,padding:"10px 12px"}}>
+                  <div style={{fontSize:12,color:C.textDim,marginBottom:8,fontWeight:700}}>완료한 과업 선택:</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {pending.map((t,i)=>(
+                      <button key={t.id||i} onClick={()=>completeTask(t)}
+                        style={{padding:"8px 12px",border:`1.5px solid ${C.border}`,background:C.win,fontSize:13,fontWeight:700,color:C.text,cursor:"pointer",textAlign:"left",fontFamily:C.ss}}>
+                        ⬜ [{t.category}] {t.task}
+                      </button>
+                    ))}
+                    <button onClick={()=>setCompletePicker(false)}
+                      style={{padding:"6px 12px",border:`1.5px solid ${C.border}`,background:C.pinkLt,fontSize:12,color:C.textDim,cursor:"pointer",fontFamily:C.ss}}>
+                      취소
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div ref={bottomRef}/>
             </div>
 
