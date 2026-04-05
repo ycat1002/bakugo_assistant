@@ -162,7 +162,7 @@ export default function Home() {
       const t=pendingTask;
       setTasks(p=>[...p,t]);
       setMsgs(p=>[...p,{role:"user",text:"응"},{role:"assistant",text:wrap("わかった。登録した。(알았어. 등록했어.)")+"
-✚ ["+t.category+"] "+t.task+(t.date?" "+t.date:"")}]);
++ ["+t.category+"] "+t.task+(t.date?" "+t.date:"")}]);
       notion("add_task",t).catch(()=>{});
     } else {
       setMsgs(p=>[...p,{role:"user",text:"아니"},{role:"assistant",text:wrap("そうか。(그래.)") }]);
@@ -323,7 +323,7 @@ export default function Home() {
             )}
             {pendingTask&&!loading&&(
               <div style={{background:C.winDim,border:`2px solid ${C.lavender}`,padding:"10px 12px"}}>
-                <div style={{fontSize:12,color:C.textDim,marginBottom:4,fontWeight:700}}>✚ 과업 등록 확인:</div>
+                <div style={{fontSize:12,color:C.textDim,marginBottom:4,fontWeight:700}}>+ 과업 등록 확인:</div>
                 <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:8}}>[{pendingTask.category}] {pendingTask.task}{pendingTask.date?" · "+pendingTask.date:""}</div>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={()=>confirmTask(true)} style={{flex:1,padding:"8px 0",border:`2px solid ${C.border}`,background:C.lavLt,fontSize:13,fontWeight:700,color:C.borderDk,cursor:"pointer",fontFamily:C.ss}}>응, 등록해</button>
