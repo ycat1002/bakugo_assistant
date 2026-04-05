@@ -161,8 +161,7 @@ export default function Home() {
     if(yes){
       const t=pendingTask;
       setTasks(p=>[...p,t]);
-      setMsgs(p=>[...p,{role:"user",text:"응"},{role:"assistant",text:wrap("わかった。登録した。(알았어. 등록했어.)")+"
-+ ["+t.category+"] "+t.task+(t.date?" "+t.date:"")}]);
+      setMsgs(p=>[...p,{role:"user",text:"\uc751"},{role:"assistant",text:wrap("\u308f\u304b\u3063\u305f\u3002\u767b\u9332\u3057\u305f\u3002(\uc54c\uc558\uc5b4. \ub4f1\ub85d\ud588\uc5b4.)")+"\n["+t.category+"] "+t.task+(t.date?" "+t.date:"")}]);
       notion("add_task",t).catch(()=>{});
     } else {
       setMsgs(p=>[...p,{role:"user",text:"아니"},{role:"assistant",text:wrap("そうか。(그래.)") }]);
