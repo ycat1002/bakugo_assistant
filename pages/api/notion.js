@@ -276,53 +276,37 @@ export default async function handler(req, res) {
       return res.status(200).json({ id: data.id, url: data.url });
     }
 
-    // ── 루틴 페이지 수정 ──
+    // ── 루틴 수정 (과업 DB의 "루틴_설정" 행 내용 필드 업데이트) ──
     if (action === "update_routine") {
-      const routinePageId = process.env.NOTION_ROUTINE_PAGE_ID;
-      if (!routinePageId) return res.status(400).json({ error: "NOTION_ROUTINE_PAGE_ID not set" });
       if (!payload?.content) return res.status(400).json({ error: "content required" });
-
-      // 기존 내용 읽기
-      const getR = await fetch(`https://api.notion.com/v1/blocks/${routinePageId}/children?page_size=100`, { headers });
-      const getData = await getR.json();
-
-      // 기존 블록 전부 삭제 후 새 내용 추가
-      for (const block of (getData.results || [])) {
-        await fetch(`https://api.notion.com/v1/blocks/${block.id}`, { method: "DELETE", headers });
-      }
-
-      // 새 내용 추가
-      const lines = payload.content.split("\n").filter(l => l.trim());
-      const children = lines.map(line => ({
-        object: "block",
-        type: line.startsWith("# ") ? "heading_1" : line.startsWith("## ") ? "heading_2" : line.startsWith("- ") ? "bulleted_list_item" : "paragraph",
-        ...(line.startsWith("# ") ? { heading_1: { rich_text: [{ type: "text", text: { content: line.slice(2) } }] } }
-          : line.startsWith("## ") ? { heading_2: { rich_text: [{ type: "text", text: { content: line.slice(3) } }] } }
-          : line.startsWith("- ") ? { bulleted_list_item: { rich_text: [{ type: "text", text: { content: line.slice(2) } }] } }
-          : { paragraph: { rich_text: [{ type: "text", text: { content: line } }] } }),
-      }));
-
-      const r = await fetch(`https://api.notion.com/v1/blocks/${routinePageId}/children`, {
+      // 루틴_설정 행 ID 고정 (과업 DB 내)
+      const routineRowId = "3396218c-4184-814c-8b6b-ce136d9e1e5a";
+      const r = await fetch(`https://api.notion.com/v1/pages/${routineRowId}`, {
         method: "PATCH", headers,
-        body: JSON.stringify({ children }),
+        body: JSON.stringify({
+          properties: {
+            "내용": { rich_text: [{ type: "text", text: { content: payload.content.slice(0, 2000) } }] },
+          },
+        }),
       });
-      return res.status(200).json({ ok: r.status === 200 });
+      const data = await r.json();
+      return res.status(200).json({ ok: r.status === 200, error: data.message });
     }
 
-    // ── 루틴 페이지 읽기 ──
+    // ── 루틴 읽기 (과업 DB에서 "루틴_설정" 행 조회) ──
     if (action === "get_routine") {
-      const routinePageId = process.env.NOTION_ROUTINE_PAGE_ID;
-      if (!routinePageId) return res.status(200).json({ text: "" });
-      const r = await fetch(`https://api.notion.com/v1/blocks/${routinePageId}/children?page_size=50`, { headers });
+      const r = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
+        method: "POST", headers,
+        body: JSON.stringify({
+          filter: { property: "작업명", title: { equals: "루틴_설정" } },
+          page_size: 1,
+        }),
+      });
       const data = await r.json();
-      const text = (data.results || []).map(block => {
-        const type = block.type;
-        const content = block[type]?.rich_text?.map(t => t.plain_text)?.join("") || "";
-        if (!content) return null;
-        const prefix = {heading_1:"# ",heading_2:"## ",heading_3:"### ",bulleted_list_item:"- ",numbered_list_item:"1. "}[type] || "";
-        return prefix + content;
-      }).filter(Boolean).join("\n");
-      return res.status(200).json({ text });
+      const row = data.results?.[0];
+      if (!row) return res.status(200).json({ text: "" });
+      const text = row.properties?.내용?.rich_text?.map(t => t.plain_text)?.join("") || "";
+      return res.status(200).json({ text, pageId: row.id });
     }
 
     return res.status(400).json({ error: "unknown action" });
