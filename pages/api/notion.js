@@ -234,6 +234,34 @@ export default async function handler(req, res) {
       return res.status(200).json({ url: data.url || null });
     }
 
+    // ── 페이지 아카이브 (삭제 = 휴지통으로 이동) ──
+    if (action === "archive_page") {
+      if (!payload?.pageId) return res.status(400).json({ error: "pageId required" });
+      const r = await fetch(`https://api.notion.com/v1/pages/${payload.pageId}`, {
+        method: "PATCH", headers,
+        body: JSON.stringify({ archived: true }),
+      });
+      const data = await r.json();
+      console.log("[archive] pageId:", payload.pageId, "| status:", r.status, "| error:", data.message||"none");
+      return res.status(200).json({ ok: r.status === 200, error: data.message });
+    }
+
+    // ── 루틴 페이지 읽기 ──
+    if (action === "get_routine") {
+      const routinePageId = process.env.NOTION_ROUTINE_PAGE_ID;
+      if (!routinePageId) return res.status(200).json({ text: "" });
+      const r = await fetch(`https://api.notion.com/v1/blocks/${routinePageId}/children?page_size=50`, { headers });
+      const data = await r.json();
+      const text = (data.results || []).map(block => {
+        const type = block.type;
+        const content = block[type]?.rich_text?.map(t => t.plain_text)?.join("") || "";
+        if (!content) return null;
+        const prefix = {heading_1:"# ",heading_2:"## ",heading_3:"### ",bulleted_list_item:"- ",numbered_list_item:"1. "}[type] || "";
+        return prefix + content;
+      }).filter(Boolean).join("\n");
+      return res.status(200).json({ text });
+    }
+
     return res.status(400).json({ error: "unknown action" });
 
   } catch (e) {

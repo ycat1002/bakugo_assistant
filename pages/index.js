@@ -137,8 +137,21 @@ export default function Home() {
       }
     } catch {}
     try { const c=await notion("get_categories"); if(c.options?.length>0) setCats(c.options); } catch {}
+
+    // 루틴 읽기 + 오늘 할 일 파싱
+    let routineMsg = "";
+    try {
+      const r = await notion("get_routine");
+      if (r.text) {
+        const todayItems = parseTodayRoutine(r.text);
+        if (todayItems && todayItems.length > 0) {
+          routineMsg = "\n\n오늘 루틴: " + todayItems.join(", ");
+        }
+      }
+    } catch {}
+
     setTL(false);
-    setMsgs([{role:"assistant",text:getGreeting(count)}]);
+    setMsgs([{role:"assistant",text:getGreeting(count) + routineMsg + (routineMsg ? "\n스케줄 등록할까?" : "")}]);
   };
 
   const pending = tasks.filter(t=>!t.done);
