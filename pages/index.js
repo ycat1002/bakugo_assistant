@@ -10,7 +10,7 @@ const C = {
   ss:"'Noto Sans KR', sans-serif",px:"'Press Start 2P', monospace",
 };
 
-const wrap = s => `\u300c${s}\u300d`;
+const wrap = s => "[" + s + "]";
 
 const getGreeting = (n) => {
   const h = new Date().getHours();
@@ -152,19 +152,35 @@ export default function Home() {
     try { const c=await notion("get_categories"); if(c.options?.length>0) setCats(c.options); } catch {}
 
     // 루틴 읽기 + 오늘 할 일 파싱
-    let routineMsg = "";
+    setTL(false);
+
+    // 루틴 읽고 Claude한테 넘겨서 오늘 할 일 정리해서 말하게
+    let greetText = getGreeting(count);
     try {
       const r = await notion("get_routine");
       if (r.text) {
         const todayItems = parseTodayRoutine(r.text);
         if (todayItems && todayItems.length > 0) {
-          routineMsg = "\n\n오늘 루틴: " + todayItems.join(", ");
+          // Claude한테 오늘 루틴 기반으로 인사 + 할 일 정리 요청
+          const routineContext = "오늘 루틴: " + todayItems.join(", ");
+          const sys = buildSystem([], [], []);
+          const res = await fetch("/api/chat", {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              system: sys,
+              messages: [{
+                role: "user",
+                content: "오늘 " + new Date().toLocaleDateString("ko-KR", {weekday:"long"}) + "야. " + routineContext + ". 이걸 바탕으로 오늘 할 일 짧게 정리해서 인사해줘. 스케줄 과업으로 등록할지 물어봐."
+              }]
+            })
+          });
+          const data = await res.json();
+          greetText = data.content?.[0]?.text || greetText;
         }
       }
     } catch {}
 
-    setTL(false);
-    setMsgs([{role:"assistant",text:getGreeting(count) + routineMsg + (routineMsg ? "\n스케줄 등록할까?" : "")}]);
+    setMsgs([{role:"assistant", text:greetText}]);
   };
 
   const pending = tasks.filter(t=>!t.done);
@@ -367,7 +383,7 @@ export default function Home() {
                 <div style={{maxWidth:"82%",background:m.role==="user"?C.hotpink:C.lavLt,border:`1.5px solid ${m.role==="user"?C.borderDk:C.border}`,padding:"9px 12px",fontSize:14,lineHeight:1.7,color:m.role==="user"?"#fff":C.text,whiteSpace:"pre-wrap",wordBreak:"break-word",fontWeight:m.role==="user"?700:400}}>{m.text}</div>
               </div>
             ))}
-            {loading&&<div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{width:26,height:26,border:`1.5px solid ${C.border}`,overflow:"hidden",borderRadius:2}}><img src="/idle.png" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}} alt="b"/></div><div style={{background:C.lavLt,border:`1.5px solid ${C.border}`,padding:"8px 14px",fontSize:16,color:C.lavDk,letterSpacing:4}}>\u30fb\u30fb\u30fb</div></div>}
+            {loading&&<div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{width:26,height:26,border:`1.5px solid ${C.border}`,overflow:"hidden",borderRadius:2}}><img src="/idle.png" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}} alt="b"/></div><div style={{background:C.lavLt,border:`1.5px solid ${C.border}`,padding:"8px 14px",fontSize:16,color:C.lavDk,letterSpacing:4}}>...</div></div>}
             {pendingST&&!loading&&(
               <div style={{background:C.winDim,border:`2px solid ${C.lavender}`,padding:"10px 12px"}}>
                 <div style={{fontSize:12,color:C.textDim,marginBottom:8}}>💭 "{pendingST.thought}"</div>
