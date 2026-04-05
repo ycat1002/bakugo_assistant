@@ -246,6 +246,39 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: r.status === 200, error: data.message });
     }
 
+    // ── 루틴 페이지 수정 ──
+    if (action === "update_routine") {
+      const routinePageId = process.env.NOTION_ROUTINE_PAGE_ID;
+      if (!routinePageId) return res.status(400).json({ error: "NOTION_ROUTINE_PAGE_ID not set" });
+      if (!payload?.content) return res.status(400).json({ error: "content required" });
+
+      // 기존 내용 읽기
+      const getR = await fetch(`https://api.notion.com/v1/blocks/${routinePageId}/children?page_size=100`, { headers });
+      const getData = await getR.json();
+
+      // 기존 블록 전부 삭제 후 새 내용 추가
+      for (const block of (getData.results || [])) {
+        await fetch(`https://api.notion.com/v1/blocks/${block.id}`, { method: "DELETE", headers });
+      }
+
+      // 새 내용 추가
+      const lines = payload.content.split("\n").filter(l => l.trim());
+      const children = lines.map(line => ({
+        object: "block",
+        type: line.startsWith("# ") ? "heading_1" : line.startsWith("## ") ? "heading_2" : line.startsWith("- ") ? "bulleted_list_item" : "paragraph",
+        ...(line.startsWith("# ") ? { heading_1: { rich_text: [{ type: "text", text: { content: line.slice(2) } }] } }
+          : line.startsWith("## ") ? { heading_2: { rich_text: [{ type: "text", text: { content: line.slice(3) } }] } }
+          : line.startsWith("- ") ? { bulleted_list_item: { rich_text: [{ type: "text", text: { content: line.slice(2) } }] } }
+          : { paragraph: { rich_text: [{ type: "text", text: { content: line } }] } }),
+      }));
+
+      const r = await fetch(`https://api.notion.com/v1/blocks/${routinePageId}/children`, {
+        method: "PATCH", headers,
+        body: JSON.stringify({ children }),
+      });
+      return res.status(200).json({ ok: r.status === 200 });
+    }
+
     // ── 루틴 페이지 읽기 ──
     if (action === "get_routine") {
       const routinePageId = process.env.NOTION_ROUTINE_PAGE_ID;
