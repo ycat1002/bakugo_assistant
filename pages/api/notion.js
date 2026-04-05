@@ -246,6 +246,36 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: r.status === 200, error: data.message });
     }
 
+    // ── 루틴 페이지 초기화 (Integration이 직접 생성 → 접근 권한 자동 확보) ──
+    if (action === "init_routine") {
+      const parentPageId = process.env.NOTION_DB_ID
+        ? undefined
+        : "3376218c418481a7968ffe4f60de7e2d";
+
+      // 과업 DB의 상위 페이지 ID를 parent로 사용
+      const parentId = payload?.parentId || "3376218c418481a7968ffe4f60de7e2d";
+      const routineText = payload?.content || "";
+      const lines = routineText.split("\n");
+      const children = lines.map(line => {
+        if (line.startsWith("## ")) return { object:"block", type:"heading_2", heading_2:{rich_text:[{type:"text",text:{content:line.slice(3)}}]} };
+        if (!line.trim()) return { object:"block", type:"paragraph", paragraph:{rich_text:[]} };
+        return { object:"block", type:"paragraph", paragraph:{rich_text:[{type:"text",text:{content:line}}]} };
+      });
+
+      const r = await fetch("https://api.notion.com/v1/pages", {
+        method: "POST", headers,
+        body: JSON.stringify({
+          parent: { page_id: parentId },
+          icon: { emoji: "📅" },
+          properties: { title: [{ text: { content: "📅 나의 루틴 스케줄" } }] },
+          children: children.slice(0, 100),
+        }),
+      });
+      const data = await r.json();
+      if (data.error) return res.status(200).json({ error: data.message, code: data.code });
+      return res.status(200).json({ id: data.id, url: data.url });
+    }
+
     // ── 루틴 페이지 수정 ──
     if (action === "update_routine") {
       const routinePageId = process.env.NOTION_ROUTINE_PAGE_ID;
