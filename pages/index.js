@@ -42,7 +42,7 @@ const getCare = () => {
 
 const buildSystem = (cats, pending, sideThoughts) => {
   const today = new Date().toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric"});
-  return `너는 바쿠고 카츠키야. 예아의 노션 비서. 퉁명스럽지만 결국 다 해준다.
+  return `너는 바쿠고 카츠키야. 예아의 AI 비서. 퉁명스럽지만 결국 다 해준다.
 
 [예아]
 PM+콘텐츠 크리에이터+강사. 청주. WHIF IP + 로컬 브랜드 PM.
@@ -62,12 +62,6 @@ ADHD — 맥락 유추 필수. "아 그리고"/"아 참" = 사이드 생각 감�
 확인 후: {"action":"save_side_thought","thought":"...","context":"..."}
 저장된 생각은 현재 주제 끝나면 꺼내줘.
 
-[노션] 페이지 이름 나오면 search_notion 먼저
-{"action":"search_notion","query":"검색어"}
-{"action":"read_page","pageId":"ID"}
-{"action":"append_to_page","pageId":"ID","content":"내용"}
-{"action":"create_page","title":"제목","content":"내용","icon":"이모지"}
-
 [과업]
 {"action":"add_task","task":"...","category":"분야","date":"YYYY-MM-DD"}
 {"action":"complete_task","task":"번호또는이름"}
@@ -81,7 +75,7 @@ ADHD — 맥락 유추 필수. "아 그리고"/"아 참" = 사이드 생각 감�
 예아는 말이 두서없음. 다음을 반드시 지켜:
 1. 의도 불명확하면 바로 실행 금지. 먼저 "~로 이해했어. 맞냐?" 확인.
 2. 여러 가지가 섞여있으면 하나씩 분리해서 물어봐.
-3. 과업/루틴/노션 수정은 반드시 컨펌 후 실행.
+3. 과업/루틴 수정은 반드시 컨펌 후 실행.
 4. 예아가 "아 그리고"로 주제 바꾸면 앞 얘기 일단 마무리하고 넘어가.
 5. 대화하면서 의도 파악해. 한 번에 다 처리하려 하지 마.
 
@@ -102,6 +96,21 @@ const extractJson = (text) => {
 const stripJson = t => t.replace(/```json[\s\S]*?```/g,"").trim();
 const COMPLETE_RE = /완료|했어|끝났어|다 했어|마쳤어|체크/;
 
+const parseTodayRoutine = (text) => {
+  if (!text) return [];
+  const dayNames = ["일요일","월요일","화요일","수요일","목요일","금요일","토요일"];
+  const today = dayNames[new Date().getDay()];
+  const lines = text.split("\n");
+  let inSection = false;
+  const items = [];
+  for (const line of lines) {
+    if (line.includes(today)) { inSection = true; continue; }
+    if (inSection && /^(#{1,3}\s|.*요일)/.test(line) && !line.includes(today)) break;
+    if (inSection && line.trim()) items.push(line.trim().replace(/^[-•]\s*/, ""));
+  }
+  return items;
+};
+
 export default function Home() {
   const [cats, setCats]   = useState(["WHIF","클라이언트","앱개발","퍼브랜","시스템"]);
   const [msgs, setMsgs]   = useState([]);
@@ -119,6 +128,10 @@ export default function Home() {
   const [taskLoading, setTL]= useState(false);
   const [initialized, setInit]   = useState(false);
   const [careShown, setCareShown]= useState(false);
+  // orchestrate
+  const [orchInput, setOrchInput] = useState("");
+  const [orchLoading, setOrchLoad] = useState(false);
+  const [orchResult, setOrchResult] = useState(null);
 
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
@@ -131,25 +144,25 @@ export default function Home() {
     return ()=>clearInterval(t);
   },[initialized,careShown]);
 
-  const notion = (action, payload) =>
-    fetch("/api/notion",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,payload})}).then(r=>r.json());
+  const db = (action, payload) =>
+    fetch("/api/db",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,payload})}).then(r=>r.json());
 
   const initApp = async () => {
     setTL(true); let count=0;
     try {
-      const d = await notion("get_tasks");
+      const d = await db("get_tasks");
       if(d.results){
         const l = d.results.map(r=>({
           id:r.id,
-          task:r.properties?.작업명?.title?.[0]?.plain_text||"제목없음",
-          category:r.properties?.분야?.select?.name||"기타",
-          date:r.properties?.날짜?.date?.start||"",
-          done:r.properties?.완료?.checkbox||false,
+          task:r.task||"제목없음",
+          category:r.category||"기타",
+          date:r.date||"",
+          done:!!r.done,
         }));
         setTasks(l); count=l.filter(t=>!t.done).length;
       }
     } catch {}
-    try { const c=await notion("get_categories"); if(c.options?.length>0) setCats(c.options); } catch {}
+    try { const c=await db("get_categories"); if(c.options?.length>0) setCats([...new Set([...cats,...c.options])]); } catch {}
 
     // 루틴 읽기 + 오늘 할 일 파싱
     setTL(false);
@@ -157,7 +170,7 @@ export default function Home() {
     // 루틴 읽고 Claude한테 넘겨서 오늘 할 일 정리해서 말하게
     let greetText = getGreeting(count);
     try {
-      const r = await notion("get_routine");
+      const r = await db("get_routine");
       if (r.text) {
         const todayItems = parseTodayRoutine(r.text);
         if (todayItems && todayItems.length > 0) {
@@ -189,11 +202,11 @@ export default function Home() {
   const loadTasks = async () => {
     setTL(true);
     try {
-      const d = await notion("get_tasks");
+      const d = await db("get_tasks");
       if(d.results) setTasks(d.results.map(r=>({
-        id:r.id, task:r.properties?.작업명?.title?.[0]?.plain_text||"제목없음",
-        category:r.properties?.분야?.select?.name||"기타",
-        date:r.properties?.날짜?.date?.start||"", done:r.properties?.완료?.checkbox||false,
+        id:r.id, task:r.task||"제목없음",
+        category:r.category||"기타",
+        date:r.date||"", done:!!r.done,
       })));
     } catch {}
     setTL(false);
@@ -203,7 +216,7 @@ export default function Home() {
     if(!pendingRoutine) return;
     if(yes){
       try {
-        await notion("update_routine", {content: pendingRoutine.content});
+        await db("update_routine", {content: pendingRoutine.content});
         setMsgs(p=>[...p,{role:"user",text:"\uc751"},{role:"assistant",text:wrap("\u308f\u304b\u3063\u305f\u3002\u30eb\u30fc\u30c6\u30a3\u30f3\u66f4\u66f4\u3057\u305f\u3002(\uc54c\uc558\uc5b4. \ub8e8\ud2f4 \uc218\uc815\ud588\uc5b4.)")}]);
       } catch {
         setMsgs(p=>[...p,{role:"assistant",text:"\uc2e4\ud328\ud588\uc5b4."}]);
@@ -220,7 +233,7 @@ export default function Home() {
       const t=pendingTask;
       setTasks(p=>[...p,t]);
       setMsgs(p=>[...p,{role:"user",text:"\uc751"},{role:"assistant",text:wrap("\u308f\u304b\u3063\u305f\u3002\u767b\u9332\u3057\u305f\u3002(\uc54c\uc558\uc5b4. \ub4f1\ub85d\ud588\uc5b4.)")+"\n["+t.category+"] "+t.task+(t.date?" "+t.date:"")}]);
-      notion("add_task",t).catch(()=>{});
+      db("add_task",t).catch(()=>{});
     } else {
       setMsgs(p=>[...p,{role:"user",text:"아니"},{role:"assistant",text:wrap("\u305d\u3046\u304b\u3002(그래.)") }]);
     }
@@ -231,7 +244,7 @@ export default function Home() {
     setTasks(p=>p.map(t=>t.id===task.id?{...t,done:true}:t));
     setCP(false); setST([]);
     setMsgs(p=>[...p,{role:"assistant",text:wrap("\u3088\u3057\u3002(\uc880\uc544.)")+"\n\n\u2705 \""+task.task+"\" \uc644\ub8cc."}]);
-    if(task.id) try { await notion("complete",{pageId:task.id}); } catch {}
+    if(task.id) try { await db("complete",{id:task.id}); } catch {}
   };
 
   const completeSelected = async () => {
@@ -241,7 +254,7 @@ export default function Home() {
     setMsgs(p=>[...p,{role:"assistant",text:wrap("\u3088\u3057\u3002(\uc880\uc544.)")+"\n\n\u2705 "+names+" \uc644\ub8cc."}]);
     setCP(false); setST([]);
     for(const t of selectedTasks){
-      if(t.id) try { await notion("complete",{pageId:t.id}); } catch {}
+      if(t.id) try { await db("complete",{id:t.id}); } catch {}
     }
   };
 
@@ -253,7 +266,7 @@ export default function Home() {
     if(!pendingST) return;
     if(yes){
       setSD(p=>[...p,{thought:pendingST.thought,context:pendingST.context}]);
-      try { await notion("save_thought",pendingST); } catch {}
+      try { await db("save_thought",pendingST); } catch {}
       setMsgs(p=>[...p,{role:"user",text:"응"},{role:"assistant",text:wrap("\u308f\u304b\u3063\u305f\u3002\u5f8c\u3067\u8a71\u305d\u3046\u3002(알았어. 나중에 얘기하자.)")+"\n💭 \""+pendingST.thought+"\" 저장했어."}]);
     } else {
       setMsgs(p=>[...p,{role:"user",text:"아니"},{role:"assistant",text:wrap("\u305d\u3046\u304b\u3002\u7d9a\u3051\u308d\u3002(그래. 계속해.)")}]);
@@ -283,28 +296,9 @@ export default function Home() {
           const ref=json.task, n=parseInt(ref); let done=null;
           if(!isNaN(n)&&tasks[n-1]){done=tasks[n-1];setTasks(p=>p.map((t,i)=>i===n-1?{...t,done:true}:t));}
           else{const i=tasks.findIndex(t=>t.task.includes(ref)&&!t.done);if(i>=0){done=tasks[i];setTasks(p=>p.map((t,j)=>j===i?{...t,done:true}:t));}}
-          if(done?.id) notion("complete",{pageId:done.id}).catch(()=>{});
+          if(done?.id) db("complete",{id:done.id}).catch(()=>{});
         } else if(json.action==="save_side_thought"){
           setPST({thought:json.thought,context:json.context||""});
-        } else if(json.action==="search_notion"){
-          notion("search_notion",{query:json.query}).then(d=>{
-            const rs=d.results||[];
-            if(!rs.length){setMsgs(p=>[...p,{role:"assistant",text:"못 찾겠어. 다른 검색어 줘봐."}]);return;}
-            const list=rs.map((r,i)=>(i+1)+". "+r.title+"\n   "+r.url).join("\n");
-            setMsgs(p=>[...p,{role:"assistant",text:"있어.\n\n"+list+"\n\n어떤 거 열어줄까?"}]);
-          }).catch(()=>{});
-        } else if(json.action==="read_page"){
-          notion("read_page",{pageId:json.pageId}).then(d=>{
-            setMsgs(p=>[...p,{role:"assistant",text:"읽었어.\n\n"+(d.text||"내용 없음")}]);
-          }).catch(()=>{});
-        } else if(json.action==="append_to_page"){
-          notion("append_to_page",{pageId:json.pageId,content:json.content}).then(()=>{
-            setMsgs(p=>[...p,{role:"assistant",text:"추가했어."}]);
-          }).catch(()=>{});
-        } else if(json.action==="create_page"){
-          notion("create_page",{title:json.title,content:json.content,icon:json.icon}).then(d=>{
-            setMsgs(p=>[...p,{role:"assistant",text:"만들었어."+(d.url?"\n\n📄 "+d.url:"")}]);
-          }).catch(()=>{});
         }
       }
 
@@ -328,6 +322,21 @@ export default function Home() {
     setInput(""); sendToAI(t);
   };
   const onKey = e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();} };
+
+  const sendOrch = async () => {
+    const t=orchInput.trim(); if(!t||orchLoading) return;
+    setOrchLoad(true); setOrchResult(null);
+    try {
+      const res = await fetch("/api/orchestrate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({task:t})});
+      const data = await res.json();
+      if(data.error) throw new Error(data.error);
+      setOrchResult(data);
+    } catch(e) {
+      setOrchResult({error:e.message});
+    }
+    setOrchLoad(false);
+  };
+  const onKeyOrch = e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendOrch();} };
 
   const winS = {background:C.win,border:`2px solid ${C.border}`,boxShadow:`3px 3px 0 ${C.borderDk}`,width:"100%",maxWidth:400};
   const Tb = ({title}) => (
@@ -369,7 +378,7 @@ export default function Home() {
       </div>
 
       <div style={{width:"100%",maxWidth:400,display:"flex"}}>
-        {[["chat","💬 CHAT"],["tasks","📋 TASKS"+(pending.length>0?" ("+pending.length+")":"")]].map(([k,l])=>(
+        {[["chat","💬 CHAT"],["tasks","📋 TASKS"+(pending.length>0?" ("+pending.length+")":"")],["orch","🤖 AI LAB"]].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:"7px 4px",border:`2px solid ${C.border}`,borderBottom:tab===k?"none":`2px solid ${C.border}`,background:tab===k?C.win:C.winDim,fontFamily:C.ss,fontSize:12,fontWeight:700,color:tab===k?C.lavDk:C.textDim,cursor:"pointer"}}>{l}</button>
         ))}
       </div>
@@ -464,10 +473,73 @@ export default function Home() {
             {pending.length>0&&<div style={{marginTop:10,padding:"9px 10px",background:C.pinkLt,border:`1.5px solid ${C.hotpink}`,fontSize:13,fontWeight:700,color:C.borderDk}}>⚠ 미완료 {pending.length}개. 빨리 해.</div>}
           </div>
         )}
+
+        {tab==="orch"&&(
+          <div style={{padding:10,background:C.win}}>
+            <div style={{fontSize:12,color:C.textDim,fontWeight:700,marginBottom:8}}>Claude + Gemini + GPT 협업 리서치</div>
+            <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:10}}>
+              <textarea value={orchInput} onChange={e=>setOrchInput(e.target.value)} onKeyDown={onKeyOrch} placeholder="리서치할 주제를 입력해." disabled={orchLoading} rows={2} style={{flex:1,background:C.win,border:`2px solid ${C.border}`,padding:"10px 12px",color:C.text,fontSize:14,fontFamily:C.ss,outline:"none",resize:"none",lineHeight:1.6}}/>
+              <button onClick={sendOrch} disabled={orchLoading} style={{padding:"10px 16px",border:`2px solid ${C.borderDk}`,background:orchLoading?C.pinkLt:C.yellow,fontSize:14,fontWeight:700,color:C.text,cursor:orchLoading?"not-allowed":"pointer",flexShrink:0,fontFamily:C.ss}}>{orchLoading?"...":"GO"}</button>
+            </div>
+            {orchLoading&&(
+              <div style={{textAlign:"center",padding:"30px 0",fontSize:13,color:C.textDim}}>
+                <div style={{marginBottom:8,fontSize:16}}>🤖🤖🤖</div>
+                3개 AI가 분석 중... (최대 30초)
+              </div>
+            )}
+            {orchResult&&!orchResult.error&&(
+              <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:400,overflowY:"auto"}}>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                  <span style={{fontSize:11,padding:"3px 8px",background:C.yellow,fontWeight:700}}>{orchResult.type}</span>
+                  <span style={{fontSize:11,padding:"3px 8px",background:C.lavLt,fontWeight:700}}>{orchResult.domain}</span>
+                  <span style={{fontSize:11,padding:"3px 8px",background:C.hotpink,color:"#fff",fontWeight:700}}>리더: {orchResult.leader}</span>
+                </div>
+                <div style={{background:C.lavLt,border:`2px solid ${C.lavender}`,padding:"12px 14px"}}>
+                  <div style={{fontSize:12,fontWeight:700,color:C.borderDk,marginBottom:6}}>📌 최종 결론</div>
+                  <div style={{fontSize:14,lineHeight:1.8,color:C.text,whiteSpace:"pre-wrap"}}>{orchResult.final}</div>
+                </div>
+                {orchResult.drafts&&(
+                  <details style={{background:C.winDim,border:`1.5px solid ${C.border}`,padding:"8px 12px"}}>
+                    <summary style={{fontSize:12,fontWeight:700,color:C.textDim,cursor:"pointer"}}>📝 AI 초안 3종</summary>
+                    <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
+                      {[["Claude",orchResult.drafts.claude],["Gemini",orchResult.drafts.gemini],["GPT",orchResult.drafts.gpt]].map(([name,text])=>(
+                        <div key={name}>
+                          <div style={{fontSize:11,fontWeight:700,color:C.borderDk,marginBottom:2}}>{name}</div>
+                          <div style={{fontSize:13,lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap"}}>{text}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+                {orchResult.critics&&(
+                  <details style={{background:C.winDim,border:`1.5px solid ${C.border}`,padding:"8px 12px"}}>
+                    <summary style={{fontSize:12,fontWeight:700,color:C.textDim,cursor:"pointer"}}>⚔️ 크리틱 로그</summary>
+                    <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
+                      {[["Claude (논리)",orchResult.critics.claude],["Gemini (팩트)",orchResult.critics.gemini],["GPT (독자)",orchResult.critics.gpt]].map(([name,text])=>(
+                        <div key={name}>
+                          <div style={{fontSize:11,fontWeight:700,color:C.borderDk,marginBottom:2}}>{name}</div>
+                          <div style={{fontSize:13,lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap"}}>{text}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            )}
+            {orchResult?.error&&(
+              <div style={{background:C.pinkLt,border:`1.5px solid ${C.hotpink}`,padding:"10px 12px",fontSize:13,color:C.borderDk}}>오류: {orchResult.error}</div>
+            )}
+            {!orchLoading&&!orchResult&&(
+              <div style={{textAlign:"center",padding:"30px 0",fontSize:13,color:C.textDim,lineHeight:2}}>
+                리서치/전략/콘텐츠 주제를 입력하면<br/>Claude+Gemini+GPT가 협업해서 답해줘.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{fontSize:11,color:C.borderDk,textAlign:"center",lineHeight:2,maxWidth:400,fontWeight:600}}>
-        과업 추가/완료 | 노션 읽기/쓰기 | 바쿠고랑 대화
+        과업 추가/완료 | AI 리서치 | 바쿠고랑 대화
       </div>
     </div></>
   );
