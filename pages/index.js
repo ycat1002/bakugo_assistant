@@ -548,15 +548,19 @@ export default function Home() {
               {memos.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "28px 0", color: C.textDim }}>메모 없음</div>
               ) : (
-                memos.slice().reverse().map((m, i) => (
-                  <div key={i} style={{ padding: "10px 12px", marginBottom: 8, border: `1.5px solid ${C.border}`, background: C.lavLt }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", display: "inline-block", marginBottom: 4, background: m.type === "research" ? C.hotpink : C.yellow, color: m.type === "research" ? "#fff" : C.text }}>{m.type === "research" ? "🔍 리서치" : "💭 생각"}</span>
-                    {m.query && <div style={{ fontSize: 11, color: C.textDim, marginBottom: 2 }}>Q: {m.query}</div>}
-                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{m.text}</div>
-                    {m.context && <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>{m.context}</div>}
-                    <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>{m.time || ""}</div>
-                  </div>
-                ))
+                memos.slice().reverse().map((m, ri) => {
+                  const idx = memos.length - 1 - ri;
+                  return (
+                    <div key={ri} style={{ padding: "10px 12px", marginBottom: 8, border: `1.5px solid ${C.border}`, background: C.lavLt, position: "relative" }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", display: "inline-block", marginBottom: 4, background: m.type === "research" ? C.hotpink : C.yellow, color: m.type === "research" ? "#fff" : C.text }}>{m.type === "research" ? "🔍 리서치" : "💭 생각"}</span>
+                      <button onClick={() => setMemos(p => p.filter((_, i) => i !== idx))} style={{ position: "absolute", top: 8, right: 8, background: C.pinkLt, border: `1px solid ${C.border}`, color: C.borderDk, fontSize: 11, padding: "2px 6px", cursor: "pointer", fontFamily: C.ss, fontWeight: 700 }} title="삭제">✕</button>
+                      {m.query && <div style={{ fontSize: 11, color: C.textDim, marginBottom: 2 }}>Q: {m.query}</div>}
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{m.text}</div>
+                      {m.context && <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>{m.context}</div>}
+                      <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>{m.time || ""}</div>
+                    </div>
+                  );
+                })
               )}
             </div>
           )}
@@ -564,6 +568,11 @@ export default function Home() {
           {/* ── AI LAB TAB ── */}
           {tab === "orch" && (
             <div style={{ padding: 10, background: C.win }}>
+              {typeof window !== "undefined" && /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent) && (
+                <div style={{ padding: "8px 10px", marginBottom: 10, background: C.pinkLt, border: `1.5px solid ${C.hotpink}`, fontSize: 12, fontWeight: 700, color: C.borderDk, lineHeight: 1.5 }}>
+                  ⚠ 모바일에서는 타임아웃으로 실패할 수 있어. 데스크톱 앱 추천.
+                </div>
+              )}
               <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 10 }}>
                 <textarea value={orchInput} onChange={e => setOrchInput(e.target.value)} onKeyDown={onKeyOrch} placeholder="리서치할 주제를 입력해." disabled={orchLoading} rows={2} style={{ flex: 1, background: C.win, border: `2px solid ${C.border}`, padding: "10px 12px", color: C.text, fontSize: 14, fontFamily: C.ss, outline: "none", resize: "none", lineHeight: 1.6 }} />
                 <button onClick={sendOrch} disabled={orchLoading} style={{ padding: "10px 16px", border: `2px solid ${C.borderDk}`, background: orchLoading ? C.pinkLt : C.yellow, fontSize: 14, fontWeight: 700, color: C.text, cursor: orchLoading ? "not-allowed" : "pointer", flexShrink: 0, fontFamily: C.ss }}>{orchLoading ? "..." : "GO"}</button>
