@@ -127,17 +127,14 @@ export default async function handler(req, res) {
     if (action === "set_active_device") {
       const device_id = payload?.device_id;
       if (!device_id) return res.status(400).json({ error: "device_id required" });
-      try {
-        // Ensure table exists
-        await d1(`CREATE TABLE IF NOT EXISTS device_lock (id TEXT PRIMARY KEY, device_id TEXT, locked_at TEXT DEFAULT datetime('now'))`);
-        // Clear and set
-        await d1("DELETE FROM device_lock");
-        await d1("INSERT INTO device_lock (id, device_id, locked_at) VALUES (?, ?, datetime('now'))", ["lock", device_id]);
-        return res.status(200).json({ ok: true });
-      } catch (e) {
-        console.error("[device_lock]", e.message);
-        return res.status(200).json({ ok: true, fallback: true });
-      }
+      // Ensure table exists (CURRENT_TIMESTAMP is the only portable function default in SQLite)
+      await d1(`CREATE TABLE IF NOT EXISTS device_lock (id TEXT PRIMARY KEY, device_id TEXT, locked_at TEXT DEFAULT CURRENT_TIMESTAMP)`);
+      // Upsert the single lock row
+      await d1(
+        "INSERT INTO device_lock (id, device_id, locked_at) VALUES ('lock', ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET device_id = excluded.device_id, locked_at = excluded.locked_at",
+        [device_id]
+      );
+      return res.status(200).json({ ok: true });
     }
 
     // ── 12. 활성 디바이스 조회 ──
