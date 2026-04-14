@@ -158,17 +158,17 @@ export default function Home() {
   useEffect(() => { if (!initialized) { setInit(true); initApp(); } }, []);
   useEffect(() => {
     if (!initialized) return;
-    const t = setInterval(() => { const c = getCare(); if (c && !careShown) { setMsgs(p => [...p, { role: "assistant", text: c }]); setCareShown(true); setTimeout(() => setCareShown(false), 1800000); } }, 1800000);
+    const t = setInterval(() => { const c = getCare(); if (c && !careShown) { const id = crypto.randomUUID().replace(/-/g, ""); setMsgs(p => [...p, { id, role: "assistant", text: c }]); setCareShown(true); setTimeout(() => setCareShown(false), 1800000); } }, 1800000);
     return () => clearInterval(t);
   }, [initialized, careShown]);
 
-  // 채팅 폴링 (15초마다, chat 탭 + 로딩 아닐때만)
+  // 채팅 폴링 (5초마다, chat 탭 + 로딩 아닐때만)
   useEffect(() => {
     if (!initialized) return;
     const t = setInterval(() => {
       if (tab !== "chat" || loading) return;
       reloadChat(true);
-    }, 15000);
+    }, 5000);
     return () => clearInterval(t);
   }, [initialized, tab, loading]);
 
@@ -184,13 +184,27 @@ export default function Home() {
     try {
       const h = await db("get_chat");
       if (h.messages && h.messages.length > 0) {
-        const fresh = h.messages.map(m => ({ role: m.role, text: m.text }));
-        // 길이 또는 마지막 메시지가 다르면 갱신
-        const last = msgs[msgs.length - 1];
-        const freshLast = fresh[fresh.length - 1];
-        if (fresh.length !== msgs.length || !last || last.text !== freshLast?.text) {
-          setMsgs(fresh);
+        const fresh = h.messages.map(m => ({ id: m.id, role: m.role, text: m.text }));
+
+        // ID-based merge: preserve unsynced local messages + merge in D1 messages
+        if (silent) {
+          // Count synced messages from D1 (or estimate from existing data)
+          const lastFromD1 = msgs.length > 0 && msgs[msgs.length - 1].id ? msgs[msgs.length - 1].id : null;
+          const lastInFresh = fresh.length > 0 ? fresh[fresh.length - 1].id : null;
+
+          // If we have unsynced messages (ones without IDs or not in D1), preserve them
+          const unsyncedMsgs = msgs.filter(m => !fresh.some(f => f.id === m.id));
+          if (unsyncedMsgs.length > 0) {
+            const freshIds = new Set(fresh.map(m => m.id));
+            const toAdd = msgs.filter(m => !freshIds.has(m.id));
+            const merged = [...fresh, ...toAdd];
+            setMsgs(merged);
+            return;
+          }
         }
+
+        // No unsynced messages or non-silent mode; safe to replace entirely
+        setMsgs(fresh);
       }
     } catch {}
   };
@@ -265,12 +279,13 @@ export default function Home() {
     try {
       const h = await db("get_chat");
       if (h.messages && h.messages.length > 0) {
-        setMsgs(h.messages.map(m => ({ role: m.role, text: m.text })));
+        setMsgs(h.messages.map(m => ({ id: m.id, role: m.role, text: m.text })));
         return;
       }
     } catch {}
 
-    setMsgs([{ role: "assistant", text: getGreeting(count, routineText) }]);
+    const greetingMsgId = crypto.randomUUID().replace(/-/g, "");
+    setMsgs([{ id: greetingMsgId, role: "assistant", text: getGreeting(count, routineText) }]);
   };
 
   const pending = tasks.filter(t => !t.done);
@@ -313,12 +328,17 @@ export default function Home() {
       try {
         await db("update_routine", { content: pendingRoutine.content });
         setRoutine(pendingRoutine.content);
-        setMsgs(p => [...p, { role: "user", text: "응" }, { role: "assistant", text: "「わかった。ルーティン更新した。」(알았어. 루틴 수정했어.)" }]);
+        const userMsgId = crypto.randomUUID().replace(/-/g, "");
+        const assistantMsgId = crypto.randomUUID().replace(/-/g, "");
+        setMsgs(p => [...p, { id: userMsgId, role: "user", text: "응" }, { id: assistantMsgId, role: "assistant", text: "「わかった。ルーティン更新した。」(알았어. 루틴 수정했어.)" }]);
       } catch {
-        setMsgs(p => [...p, { role: "assistant", text: "실패했어." }]);
+        const errorMsgId = crypto.randomUUID().replace(/-/g, "");
+        setMsgs(p => [...p, { id: errorMsgId, role: "assistant", text: "실패했어." }]);
       }
     } else {
-      setMsgs(p => [...p, { role: "user", text: "아니" }, { role: "assistant", text: "「そうか。」(그래.)" }]);
+      const userMsgId = crypto.randomUUID().replace(/-/g, "");
+      const assistantMsgId = crypto.randomUUID().replace(/-/g, "");
+      setMsgs(p => [...p, { id: userMsgId, role: "user", text: "아니" }, { id: assistantMsgId, role: "assistant", text: "「そうか。」(그래.)" }]);
     }
     setPR(null);
   };
@@ -336,12 +356,17 @@ export default function Home() {
         }
       });
       if (added.length > 0) {
-        setMsgs(p => [...p, { role: "user", text: added.length + "개 등록" }, { role: "assistant", text: "「わかった。" + added.length + "個登録した。」(알았어. " + added.length + "개 등록했어.)\n" + added.join("\n") }]);
+        const userMsgId = crypto.randomUUID().replace(/-/g, "");
+        const assistantMsgId = crypto.randomUUID().replace(/-/g, "");
+        setMsgs(p => [...p, { id: userMsgId, role: "user", text: added.length + "개 등록" }, { id: assistantMsgId, role: "assistant", text: "「わかった。" + added.length + "個登録した。」(알았어. " + added.length + "개 등록했어.)\n" + added.join("\n") }]);
       } else {
-        setMsgs(p => [...p, { role: "assistant", text: "「そうか。」(그래.)" }]);
+        const noAddMsgId = crypto.randomUUID().replace(/-/g, "");
+        setMsgs(p => [...p, { id: noAddMsgId, role: "assistant", text: "「そうか。」(그래.)" }]);
       }
     } else {
-      setMsgs(p => [...p, { role: "user", text: "취소" }, { role: "assistant", text: "「そうか。」(그래.)" }]);
+      const userMsgId = crypto.randomUUID().replace(/-/g, "");
+      const assistantMsgId = crypto.randomUUID().replace(/-/g, "");
+      setMsgs(p => [...p, { id: userMsgId, role: "user", text: "취소" }, { id: assistantMsgId, role: "assistant", text: "「そうか。」(그래.)" }]);
     }
     setPendingTasks([]);
   };
@@ -349,7 +374,8 @@ export default function Home() {
   const completeTask = async (task) => {
     setTasks(p => p.map(t => t.id === task.id ? { ...t, done: true } : t));
     setCP(false); setST([]);
-    setMsgs(p => [...p, { role: "assistant", text: "「よし。」(좋아.)\n\n✅ \"" + task.task + "\" 완료." }]);
+    const msgId = crypto.randomUUID().replace(/-/g, "");
+    setMsgs(p => [...p, { id: msgId, role: "assistant", text: "「よし。」(좋아.)\n\n✅ \"" + task.task + "\" 완료." }]);
     if (task.id) try { await db("complete", { id: task.id }); } catch {}
   };
 
@@ -357,7 +383,8 @@ export default function Home() {
     if (selectedTasks.length === 0) return;
     setTasks(p => p.map(t => selectedTasks.find(s => s.id === t.id) ? { ...t, done: true } : t));
     const names = selectedTasks.map(t => t.task).join(", ");
-    setMsgs(p => [...p, { role: "assistant", text: "「よし。」(좋아.)\n\n✅ " + names + " 완료." }]);
+    const msgId = crypto.randomUUID().replace(/-/g, "");
+    setMsgs(p => [...p, { id: msgId, role: "assistant", text: "「よし。」(좋아.)\n\n✅ " + names + " 완료." }]);
     setCP(false); setST([]);
     for (const t of selectedTasks) {
       if (t.id) try { await db("complete", { id: t.id }); } catch {}
@@ -374,16 +401,21 @@ export default function Home() {
       setSD(p => [...p, { thought: pendingST.thought, context: pendingST.context }]);
       setMemos(p => [...p, { type: "thought", text: pendingST.thought, context: pendingST.context, time: new Date().toLocaleString("ko-KR") }]);
       try { await db("save_thought", pendingST); } catch {}
-      setMsgs(p => [...p, { role: "user", text: "응" }, { role: "assistant", text: "「わかった。後で話そう。」(알았어. 나중에 얘기하자.)\n💭 \"" + pendingST.thought + "\" 저장했어." }]);
+      const userMsgId = crypto.randomUUID().replace(/-/g, "");
+      const assistantMsgId = crypto.randomUUID().replace(/-/g, "");
+      setMsgs(p => [...p, { id: userMsgId, role: "user", text: "응" }, { id: assistantMsgId, role: "assistant", text: "「わかった。後で話そう。」(알았어. 나중에 얘기하자.)\n💭 \"" + pendingST.thought + "\" 저장했어." }]);
     } else {
-      setMsgs(p => [...p, { role: "user", text: "아니" }, { role: "assistant", text: "「そうか。続けろ。」(그래. 계속해.)" }]);
+      const userMsgId = crypto.randomUUID().replace(/-/g, "");
+      const assistantMsgId = crypto.randomUUID().replace(/-/g, "");
+      setMsgs(p => [...p, { id: userMsgId, role: "user", text: "아니" }, { id: assistantMsgId, role: "assistant", text: "「そうか。続けろ。」(그래. 계속해.)" }]);
     }
     setPST(null);
   };
 
   const sendToAI = async (userText) => {
     setLoad(true);
-    const history = [...msgs, { role: "user", text: userText }];
+    const userMsgId = crypto.randomUUID().replace(/-/g, "");
+    const history = [...msgs, { id: userMsgId, role: "user", text: userText }];
     setMsgs(history);
     try {
       const res = await fetch("/api/chat", {
@@ -414,9 +446,13 @@ export default function Home() {
         }
       }
 
-      if (clean) setMsgs([...history, { role: "assistant", text: clean }]);
+      if (clean) {
+        const assistantMsgId = crypto.randomUUID().replace(/-/g, "");
+        setMsgs([...history, { id: assistantMsgId, role: "assistant", text: clean }]);
+      }
     } catch {
-      setMsgs(p => [...p, { role: "assistant", text: "「はぁ？もう一回やれ。」(하? 다시 해.)" }]);
+      const errorMsgId = crypto.randomUUID().replace(/-/g, "");
+      setMsgs(p => [...p, { id: errorMsgId, role: "assistant", text: "「はぁ？もう一回やれ。」(하? 다시 해.)" }]);
     }
     setLoad(false); inputRef.current?.focus();
   };
@@ -428,7 +464,9 @@ export default function Home() {
     }
     const t = input.trim(); if (!t || loading) return;
     if (COMPLETE_RE.test(t) && pending.length > 0 && !t.match(/\d/)) {
-      setMsgs(p => [...p, { role: "user", text: t }, { role: "assistant", text: "「わかった。どれだ？」(알았어. 어떤 거야?)\n\n완료한 과업 선택해." }]);
+      const userMsgId = crypto.randomUUID().replace(/-/g, "");
+      const assistantMsgId = crypto.randomUUID().replace(/-/g, "");
+      setMsgs(p => [...p, { id: userMsgId, role: "user", text: t }, { id: assistantMsgId, role: "assistant", text: "「わかった。どれだ？」(알았어. 어떤 거야?)\n\n완료한 과업 선택해." }]);
       setCP(true); setInput(""); return;
     }
     setInput(""); sendToAI(t);

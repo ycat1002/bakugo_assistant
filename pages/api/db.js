@@ -99,9 +99,10 @@ export default async function handler(req, res) {
     if (action === "save_chat") {
       const messages = payload?.messages || [];
       for (const m of messages.slice(-20)) {
-        const id = crypto.randomUUID().replace(/-/g, "");
+        // Client provides ID; backend uses INSERT OR IGNORE to prevent duplicates
+        const id = m.id || crypto.randomUUID().replace(/-/g, "");
         await d1(
-          "INSERT INTO chat_history (id, role, text) VALUES (?, ?, ?)",
+          "INSERT OR IGNORE INTO chat_history (id, role, text, created_at) VALUES (?, ?, ?, datetime('now'))",
           [id, m.role, m.text || ""]
         );
       }
@@ -111,7 +112,7 @@ export default async function handler(req, res) {
     // ── 9. 채팅 기록 불러오기 ──
     if (action === "get_chat") {
       const rows = await d1(
-        "SELECT role, text FROM chat_history ORDER BY created_at ASC, id ASC LIMIT 100"
+        "SELECT id, role, text, created_at FROM chat_history ORDER BY created_at ASC, id ASC LIMIT 200"
       );
       return res.status(200).json({ messages: rows });
     }
