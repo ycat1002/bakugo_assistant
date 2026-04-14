@@ -128,6 +128,9 @@ const getMoodFromText = (t) => {
 
 export default function Home() {
   const deviceIdRef = useRef("bakugo-p-" + Math.random().toString(36).slice(2, 10));
+  const [secret, setSecret] = useState("");
+  const [secretInput, setSecretInput] = useState("");
+  const [secretError, setSecretError] = useState("");
   const [cats, setCats] = useState(["WHIF", "클라이언트", "앱개발", "퍼브랜", "시스템"]);
   const [msgs, setMsgs] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -155,7 +158,15 @@ export default function Home() {
   const inputRef = useRef(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
-  useEffect(() => { if (!initialized) { setInit(true); initApp(); } }, []);
+
+  // 시크릿 로드 (localStorage)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const s = localStorage.getItem("bakugo_secret") || "";
+    if (s) setSecret(s);
+  }, []);
+
+  useEffect(() => { if (secret && !initialized) { setInit(true); initApp(); } }, [secret]);
   useEffect(() => {
     if (!initialized) return;
     const t = setInterval(() => { const c = getCare(); if (c && !careShown) { const id = crypto.randomUUID().replace(/-/g, ""); setMsgs(p => [...p, { id, role: "assistant", text: c }]); setCareShown(true); setTimeout(() => setCareShown(false), 1800000); } }, 1800000);
@@ -209,8 +220,19 @@ export default function Home() {
     } catch {}
   };
 
-  const db = (action, payload) =>
-    fetch("/api/db", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, payload }) }).then(r => r.json());
+  const db = async (action, payload) => {
+    const r = await fetch("/api/db", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-pwa-secret": secret },
+      body: JSON.stringify({ action, payload })
+    });
+    if (r.status === 401) {
+      if (typeof window !== "undefined") localStorage.removeItem("bakugo_secret");
+      setSecret("");
+      return {};
+    }
+    return r.json();
+  };
 
   const acquireDeviceLock = async () => {
     try {
@@ -419,9 +441,15 @@ export default function Home() {
     setMsgs(history);
     try {
       const res = await fetch("/api/chat", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "x-pwa-secret": secret },
         body: JSON.stringify({ system: buildSystem(cats, pending, sideThoughts, routine), messages: history.map(m => ({ role: m.role, content: m.text })) })
       });
+      if (res.status === 401) {
+        if (typeof window !== "undefined") localStorage.removeItem("bakugo_secret");
+        setSecret("");
+        setLoad(false);
+        return;
+      }
       const data = await res.json();
       const raw = data.content?.[0]?.text || "";
       const blocks = extractJson(raw);
@@ -481,7 +509,13 @@ export default function Home() {
     const t = orchInput.trim(); if (!t || orchLoading) return;
     setOrchLoad(true); setOrchResult(null);
     try {
-      const res = await fetch("/api/orchestrate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ task: t }) });
+      const res = await fetch("/api/orchestrate", { method: "POST", headers: { "Content-Type": "application/json", "x-pwa-secret": secret }, body: JSON.stringify({ task: t }) });
+      if (res.status === 401) {
+        if (typeof window !== "undefined") localStorage.removeItem("bakugo_secret");
+        setSecret("");
+        setOrchLoad(false);
+        return;
+      }
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setOrchResult(data);
@@ -514,6 +548,56 @@ export default function Home() {
     ["memo", "💭 MEMO"],
     ["orch", "🔍 AI LAB"],
   ];
+
+  // ── 로그인 게이트 ──
+  if (!secret) {
+    const tryLogin = async () => {
+      const v = secretInput.trim();
+      if (!v) return;
+      try {
+        const r = await fetch("/api/db", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-pwa-secret": v },
+          body: JSON.stringify({ action: "get_chat", payload: {} })
+        });
+        if (r.ok) {
+          if (typeof window !== "undefined") localStorage.setItem("bakugo_secret", v);
+          setSecret(v);
+          setSecretError("");
+        } else {
+          setSecretError("「違うぞ。」(틀렸어.)");
+        }
+      } catch (e) {
+        setSecretError("연결 실패");
+      }
+    };
+    return (
+      <><Head><title>BAKUGO.exe</title><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" /></Head>
+        <div style={{ minHeight: "100vh", background: C.bg, fontFamily: C.ss, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: C.win, border: `3px solid ${C.borderDk}`, padding: "20px 24px", maxWidth: 320, width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontFamily: C.px, fontSize: 14, color: C.borderDk, textAlign: "center" }}>BAKUGO.exe</div>
+            <div style={{ fontSize: 12, color: C.text, textAlign: "center", lineHeight: 1.5 }}>「お前か。合言葉を入れろ。」<br/>(너냐. 암호 넣어.)</div>
+            <input
+              type="password"
+              value={secretInput}
+              onChange={e => setSecretInput(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") tryLogin(); }}
+              placeholder="secret"
+              autoFocus
+              style={{ padding: "8px 10px", border: `2px solid ${C.border}`, fontFamily: C.ss, fontSize: 14, outline: "none" }}
+            />
+            <button
+              onClick={tryLogin}
+              style={{ padding: "8px 12px", border: `2px solid ${C.borderDk}`, background: C.lavender, color: "#fff", fontFamily: C.ss, fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+            >
+              「入れ。」(들어가.)
+            </button>
+            {secretError && <div style={{ color: "#c02020", fontSize: 12, textAlign: "center" }}>{secretError}</div>}
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <><Head><title>BAKUGO.exe</title><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" /></Head>

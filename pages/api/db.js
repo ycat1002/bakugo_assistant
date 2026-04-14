@@ -23,6 +23,15 @@ const d1 = async (sql, params = []) => {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
+  // ── 공유 시크릿 검증 (개인용 게이트) ──
+  const expected = process.env.PWA_SECRET;
+  if (expected) {
+    const provided = req.headers["x-pwa-secret"];
+    if (provided !== expected) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+  }
+
   const { action, payload } = req.body;
 
   if (!ACCOUNT_ID || !DB_ID || !API_TOKEN) {

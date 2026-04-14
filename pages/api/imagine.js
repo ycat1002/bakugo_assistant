@@ -3,6 +3,15 @@
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
+
+  const expected = process.env.PWA_SECRET;
+  if (expected) {
+    const provided = req.headers["x-pwa-secret"];
+    if (provided !== expected) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+  }
+
   const { prompt } = req.body;
   if (!prompt) return res.status(400).json({ error: "prompt required" });
 

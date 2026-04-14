@@ -124,6 +124,15 @@ const callGPT = async (system, prompt) => {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
+
+  const expected = process.env.PWA_SECRET;
+  if (expected) {
+    const provided = req.headers["x-pwa-secret"];
+    if (provided !== expected) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+  }
+
   const { task, taskTitle } = req.body;
   if (!task) return res.status(400).json({ error: "task required" });
 
