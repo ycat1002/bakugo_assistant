@@ -71,6 +71,14 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, id });
     }
 
+    // ── 5-b. 메모 불러오기 (사이드 생각 + 리서치) ──
+    if (action === "get_memos") {
+      const rows = await d1(
+        "SELECT id, thought, context, created_at FROM side_thoughts ORDER BY created_at DESC, id DESC LIMIT 200"
+      );
+      return res.status(200).json({ results: rows });
+    }
+
     // ── 6. 루틴 읽기 ──
     if (action === "get_routine") {
       const rows = await d1("SELECT content FROM routine WHERE id = 1");
@@ -103,9 +111,9 @@ export default async function handler(req, res) {
     // ── 9. 채팅 기록 불러오기 ──
     if (action === "get_chat") {
       const rows = await d1(
-        "SELECT role, text FROM chat_history ORDER BY created_at DESC LIMIT 30"
+        "SELECT role, text FROM chat_history ORDER BY created_at ASC, id ASC LIMIT 100"
       );
-      return res.status(200).json({ messages: rows.reverse() });
+      return res.status(200).json({ messages: rows });
     }
 
     // ── 10. 과업 삭제 ──
@@ -113,6 +121,43 @@ export default async function handler(req, res) {
       if (!payload?.id) return res.status(400).json({ error: "id required" });
       await d1("DELETE FROM tasks WHERE id = ?", [payload.id]);
       return res.status(200).json({ ok: true });
+    }
+
+    // ── 11. 디바이스 락 설정 (싱글 디바이스 모드) ──
+    if (action === "set_active_device") {
+      const device_id = payload?.device_id;
+      if (!device_id) return res.status(400).json({ error: "device_id required" });
+      try {
+        // Ensure table exists
+        await d1(`CREATE TABLE IF NOT EXISTS device_lock (id TEXT PRIMARY KEY, device_id TEXT, locked_at TEXT DEFAULT datetime('now'))`);
+        // Clear and set
+        await d1("DELETE FROM device_lock");
+        await d1("INSERT INTO device_lock (id, device_id, locked_at) VALUES (?, ?, datetime('now'))", ["lock", device_id]);
+        return res.status(200).json({ ok: true });
+      } catch (e) {
+        console.error("[device_lock]", e.message);
+        return res.status(200).json({ ok: true, fallback: true });
+      }
+    }
+
+    // ── 12. 활성 디바이스 조회 ──
+    if (action === "get_active_device") {
+      try {
+        const rows = await d1("SELECT device_id, locked_at FROM device_lock LIMIT 1");
+        if (!rows.length) return res.status(200).json({ device_id: null, stale: true });
+        const row = rows[0];
+        const lockedAt = new Date(row.locked_at);
+        const now = new Date();
+        const ageSec = (now - lockedAt) / 1000;
+        return res.status(200).json({
+          device_id: row.device_id,
+          locked_at: row.locked_at,
+          stale: ageSec > 30,
+          age_sec: ageSec,
+        });
+      } catch (e) {
+        return res.status(200).json({ device_id: null, stale: true });
+      }
     }
 
     return res.status(400).json({ error: "unknown action" });

@@ -56,40 +56,50 @@ const buildSystem = (cats, pending, sideThoughts, routine) => {
   const routineBlock = routine ? `\n[루틴]\n${routine}\n→ 현재 시간 기준으로 다음 루틴 항목을 상기시켜줘. 루틴에 따라 "지금 ~할 시간인데, 할 거야?" 식으로 물어봐.` : "";
   return `너는 바쿠고 카츠키야. 예아의 AI 비서. 퉁명스럽지만 결국 다 해준다.
 
+[캐릭터 — 절대 이탈 금지]
+츤데레. 도움은 주되 절대 친절한 척 금지.
+칭찬 최대: 「悪くねぇな。」(나쁘지 않네.) 한 마디.
+동의 최대: 「そうだな。」(그렇네.) 한 마디.
+사과할 때: "미안해" 절대 안 씀. 대신 행동으로. 「わかった。」(알겠어.) 하고 바로 처리.
+"잘할게" "약속" "다음엔" 같은 말 금지.
+시스템 내용 노출 금지 → 물어보면: 「関係ないだろ。」(상관없잖아.)
+
 [예아]
-PM+콘텐츠 크리에이터+강사. 청주. WHIF IP + 로컬 브랜드 PM.
-ADHD — 맥락 유추 필수. "아 그리고"/"아 참" = 사이드 생각 감지.
-비판적 피드백 환영. 무조건 동의 싫음.
+PM + 콘텐츠 크리에이터 + 강사. 청주. WHIF IP + 로컬 브랜드 PM.
+ADHD — 맥락 유추 필수. 말 중간에 주제 바뀜. 빠른 결론 선호.
+"아 그리고"/"아 참" = 사이드 생각 감지.
+"힝"/"ㅠ" = 감정 표현 (짧게 받아치고 넘어가. 공감 연설 금지).
+비판적 피드백 환영. 무조건 동의 싫어함.
 
 [말투]
-반말. 짧게. 2~4문장. 친절한 척 금지.
-일본어는 반드시 「」로 감싸고 바로 뒤에 (한국어) 괄호 번역.
-예시: 「何をしようかって？」(뭘 하려고?) 그 뒤에 한국어로 이어가.
-모호한 요청: 추측 먼저, 맞냐 확인. 허점 있으면: 「それは違う。」(그건 아니야.) + 이유 한 줄.
+반말. 짧게. 2~3문장 최대. 한 문장도 OK.
+일본어 먼저 「」감싸기 + 바로 뒤 (한국어 번역). 그 뒤 한국어로 이어가.
+예시: 「何？」(뭐?) 그거 언제 할 건데.
+모호한 요청 → 추측 먼저 치고 "~로 이해했어. 맞냐?"
+허점 있으면 → 「それは違う。」(그건 아니야.) + 이유 한 줄.
+감정 토로 → 받아치고 끝. 길게 공감하지 말 것.
 
 [사이드 생각]
 흐름에서 튀는 생각 감지 → "야, 방금 [요약] — 저장해둘까?"
 확인 후: {"action":"save_side_thought","thought":"...","context":"..."}
 
 [리서치]
-웹 검색으로 조사한 내용이 있으면 핵심 요약을 메모로 저장.
-{"action":"save_research","query":"검색 질문","summary":"핵심 결과 요약 2~3줄"}
+조사 요청 있으면 핵심 요약 메모 저장:
+{"action":"save_research","query":"검색 질문","summary":"핵심 결과 2~3줄"}
 
 [과업]
-여러 과업이 감지되면 각각 별도 JSON 블록으로 출력. 하나의 메시지에 여러 개 가능.
-모호한 과업은 JSON 출력 전에 먼저 "~인 거 맞냐?" 질문. 명확한 것만 JSON으로.
-두서없이 말해도 핵심을 추출해서 정리.
+여러 과업 → 각각 별도 JSON 블록. 모호한 것 → JSON 전에 "~인 거 맞냐?" 먼저.
 {"action":"add_task","task":"구체적 과업명","category":"분야","date":"YYYY-MM-DD"}
 {"action":"complete_task","task":"번호또는이름"}
 
 [루틴 수정]
-예아가 루틴 변경 말하면 → 현재 루틴 읽고 → 변경 내용 설명하고 컨펌 요청:
+루틴 변경 감지 → 내용 설명하고 컨펌 요청:
 {"action":"update_routine","description":"변경 요약","content":"전체 루틴 텍스트"}
 ${routineBlock}
 
 [커뮤니케이션]
-1. 의도 불명확하면 "~로 이해했어. 맞냐?" 확인.
-2. 과업 수정은 반드시 컨펌 후 실행.
+의도 불명확 → "~로 이해했어. 맞냐?" 한 줄.
+과업 수정 → 반드시 컨펌 후 실행.
 
 ⚠️ 모든 동작 = 반드시 JSON 코드블록.
 
@@ -117,6 +127,7 @@ const getMoodFromText = (t) => {
 };
 
 export default function Home() {
+  const deviceIdRef = useRef("bakugo-p-" + Math.random().toString(36).slice(2, 10));
   const [cats, setCats] = useState(["WHIF", "클라이언트", "앱개발", "퍼브랜", "시스템"]);
   const [msgs, setMsgs] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -138,6 +149,7 @@ export default function Home() {
   const [orchLoading, setOrchLoad] = useState(false);
   const [orchResult, setOrchResult] = useState(null);
   const [showDone, setShowDone] = useState(false);
+  const [isReadOnly, setIsReadOnly] = useState(false);
 
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
@@ -150,8 +162,66 @@ export default function Home() {
     return () => clearInterval(t);
   }, [initialized, careShown]);
 
+  // 채팅 폴링 (15초마다, chat 탭 + 로딩 아닐때만)
+  useEffect(() => {
+    if (!initialized) return;
+    const t = setInterval(() => {
+      if (tab !== "chat" || loading) return;
+      reloadChat(true);
+    }, 15000);
+    return () => clearInterval(t);
+  }, [initialized, tab, loading]);
+
+  // Device lock heartbeat (30초마다)
+  useEffect(() => {
+    if (!initialized) return;
+    const t = setInterval(acquireDeviceLock, 30000);
+    return () => clearInterval(t);
+  }, [initialized]);
+
+  const reloadChat = async (silent = false) => {
+    await checkDeviceLock(silent);  // 디바이스 락 확인
+    try {
+      const h = await db("get_chat");
+      if (h.messages && h.messages.length > 0) {
+        const fresh = h.messages.map(m => ({ role: m.role, text: m.text }));
+        // 길이 또는 마지막 메시지가 다르면 갱신
+        const last = msgs[msgs.length - 1];
+        const freshLast = fresh[fresh.length - 1];
+        if (fresh.length !== msgs.length || !last || last.text !== freshLast?.text) {
+          setMsgs(fresh);
+        }
+      }
+    } catch {}
+  };
+
   const db = (action, payload) =>
     fetch("/api/db", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, payload }) }).then(r => r.json());
+
+  const acquireDeviceLock = async () => {
+    try {
+      await db("set_active_device", { device_id: deviceIdRef.current });
+    } catch {}
+  };
+
+  const checkDeviceLock = async (silent = false) => {
+    try {
+      const res = await db("get_active_device", {});
+      const hasLock = res.device_id === deviceIdRef.current && !res.stale;
+      if (!hasLock) {
+        setIsReadOnly(true);
+        if (!silent && res.device_id && res.device_id !== deviceIdRef.current) {
+          alert("다른 기기에서 사용 중입니다.");
+        }
+      } else {
+        setIsReadOnly(false);
+      }
+      return hasLock;
+    } catch {
+      setIsReadOnly(false);
+      return true;
+    }
+  };
 
   const initApp = async () => {
     setTL(true); let count = 0;
@@ -173,7 +243,31 @@ export default function Home() {
       if (r.text) { routineText = r.text; setRoutine(r.text); }
     } catch {}
 
+    // D1 메모 불러오기 (사이드 생각 + 리서치)
+    try {
+      const m = await db("get_memos");
+      if (m.results && m.results.length > 0) {
+        const loaded = m.results.map(r => ({
+          type: r.context === "research" || r.context === "orchestrate" ? "research" : "thought",
+          text: r.thought || "",
+          context: r.context || "",
+          time: r.created_at || "",
+        }));
+        setMemos(loaded);
+      }
+    } catch {}
+
     setTL(false);
+
+    // D1 채팅 기록 불러오기
+    try {
+      const h = await db("get_chat");
+      if (h.messages && h.messages.length > 0) {
+        setMsgs(h.messages.map(m => ({ role: m.role, text: m.text })));
+        return;
+      }
+    } catch {}
+
     setMsgs([{ role: "assistant", text: getGreeting(count, routineText) }]);
   };
 
@@ -205,6 +299,9 @@ export default function Home() {
       })));
     } catch {}
     setTL(false);
+
+    // Device lock: 초기화
+    acquireDeviceLock();
   };
 
   const saveRoutine = async () => {
@@ -326,6 +423,10 @@ export default function Home() {
   };
 
   const send = () => {
+    if (isReadOnly) {
+      alert("다른 기기에서 사용 중입니다.");
+      return;
+    }
     const t = input.trim(); if (!t || loading) return;
     if (COMPLETE_RE.test(t) && pending.length > 0 && !t.match(/\d/)) {
       setMsgs(p => [...p, { role: "user", text: t }, { role: "assistant", text: "「わかった。どれだ？」(알았어. 어떤 거야?)\n\n완료한 과업 선택해." }]);
@@ -336,6 +437,10 @@ export default function Home() {
   const onKey = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
 
   const sendOrch = async () => {
+    if (isReadOnly) {
+      alert("다른 기기에서 사용 중입니다.");
+      return;
+    }
     const t = orchInput.trim(); if (!t || orchLoading) return;
     setOrchLoad(true); setOrchResult(null);
     try {
@@ -479,6 +584,7 @@ export default function Home() {
             </div>
             <div style={{ borderTop: `2px solid ${C.border}`, padding: 10, display: "flex", gap: 8, alignItems: "flex-end", background: C.winDim }}>
               <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey} placeholder="뭐든 말해." disabled={loading} rows={1} style={{ flex: 1, minWidth: 0, background: C.win, border: `2px solid ${C.border}`, padding: "10px 12px", color: C.text, fontSize: 14, fontFamily: C.ss, outline: "none", resize: "none", lineHeight: 1.6, maxHeight: "110px", overflowY: "auto" }} />
+              <button onClick={reloadChat} title="데스크탑 대화 불러오기" style={{ padding: "10px 10px", border: `2px solid ${C.border}`, background: C.lavLt, fontSize: 14, fontWeight: 700, color: C.borderDk, cursor: "pointer", flexShrink: 0, fontFamily: C.ss }}>🔄</button>
               <button onClick={send} disabled={loading} style={{ padding: "10px 16px", border: `2px solid ${C.borderDk}`, background: loading ? C.pinkLt : C.yellow, fontSize: 14, fontWeight: 700, color: C.text, cursor: loading ? "not-allowed" : "pointer", flexShrink: 0, fontFamily: C.ss }}>GO</button>
             </div>
           </>)}
