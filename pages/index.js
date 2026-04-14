@@ -225,6 +225,8 @@ export default function Home() {
 
   const initApp = async () => {
     setTL(true); let count = 0;
+    // 디바이스 락 먼저 획득 (chat history 이후 early return에 막히지 않도록)
+    acquireDeviceLock();
     try {
       const d = await db("get_tasks");
       if (d.results) {
@@ -299,9 +301,6 @@ export default function Home() {
       })));
     } catch {}
     setTL(false);
-
-    // Device lock: 초기화
-    acquireDeviceLock();
   };
 
   const saveRoutine = async () => {
